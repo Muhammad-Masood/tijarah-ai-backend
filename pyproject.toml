@@ -1,0 +1,35 @@
+[tool.poetry]
+name = "neurocom-backend"
+version = "0.1.0"
+description = ""
+authors = ["Muhammad-Masood <development.masood@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.115.12"
+uvicorn = {extras = ["standard"], version = "^0.34.2"}
+sqlmodel = "^0.0.24"
+requests = "^2.32.3"
+psycopg2-binary = "^2.9.10"
+pydantic = {extras = ["email"], version = "^2.11.4"}
+passlib = "^1.7.4"
+pyjwt = "^2.9.0"
+bcrypt = "^4.3.0"
+openai = "1.109.1"
+mcp = {extras = ["cli"], version = "^1.8.0"}
+fastmcp = "^2.3.4"
+google-genai = "^1.16.1"
+pandas = "^2.3.3"
+numpy = "^2.3.5"
+scikit-learn = "^1.8.0"
+langchain-openai = "^1.1.6"
+langchain-community = "^0.4.1"
+langchain = "^1.2.0"
+chromadb = "^1.4.0"
+cryptography = "^44.0.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

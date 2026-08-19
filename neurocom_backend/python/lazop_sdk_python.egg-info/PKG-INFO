@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: lazop-sdk-python
+Version: 1.1.0
+Author: top
+Author-email: xuteng.xt@alibaba-inc.com
+License: MIT
+Dynamic: author
+Dynamic: author-email
+Dynamic: license

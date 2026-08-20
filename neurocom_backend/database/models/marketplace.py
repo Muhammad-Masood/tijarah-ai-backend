@@ -76,4 +76,5 @@ class MarketplaceConnectionRead(BaseModel):
     marketplace_id: UUID
     merchant_id: UUID
     connected_at: datetime
+    encrypted_access_token: Optional[str] = None
     marketplace: Optional[MarketplaceRead] = None

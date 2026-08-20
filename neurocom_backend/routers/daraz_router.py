@@ -1,19 +1,33 @@
 from fastapi.middleware.cors import CORSMiddleware
 import requests
-from fastapi import FastAPI, Request, Header, UploadFile, File, Body, APIRouter, Depends
+from fastapi import FastAPI, Request, Header, UploadFile, File, Body, APIRouter, Depends, HTTPException, status
 from neurocom_backend.services.daraz_service import lazop_client, get_access_token, get_all_products, get_auth_code, create_new_product, get_category_attributes, migrate_images, get_migrated_images,migrate_image, get_all_categories, get_category_children, get_category_by_id, get_all_orders, trace_order_by_id, get_product_reviews, get_all_reverse_orders_info, get_order_logistic_details, payout_statement, get_orders_with_items, get_all_products_reviews
+from neurocom_backend.utils.security import decrypt_value
 from fastapi.responses import RedirectResponse, JSONResponse
 from neurocom_backend.models.daraz_model import DarazProductCreate
 from typing import Annotated, Optional, Any
 import os
 from urllib.parse import urlencode
 from dotenv import load_dotenv
+from cryptography.fernet import InvalidToken
 
 
 def get_daraz_access_token(
     x_daraz_access_token: Annotated[str, Header()],
 ) -> str:
-    return x_daraz_access_token
+    encrypted_token = x_daraz_access_token.strip()
+    if not encrypted_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing Daraz access token",
+        )
+    try:
+        return decrypt_value(encrypted_token)
+    except (InvalidToken, ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid encrypted Daraz access token",
+        )
 
 _:bool = load_dotenv()
 
@@ -24,6 +38,7 @@ async def root():
     return {"message": "Daraz Backend Server"}
 
 # https://api.daraz.pk/oauth/authorize?spm=a2o9m.11193531.0.0.97802891wGBXMU&response_type=code&force_auth=true&redirect_uri=https://evolvebitx.netlify.app/callback&client_id=504082
+# https://api.daraz.pk/oauth/authorize?spm=a2o9m.11193531.0.0.97802891wGBXMU&response_type=code&force_auth=true&redirect_uri=https://tijarah-ai-web.vercel.app/daraz/callback&client_id=504082
 @router.get('/get_auth_code')
 async def auth_code():
     params = {

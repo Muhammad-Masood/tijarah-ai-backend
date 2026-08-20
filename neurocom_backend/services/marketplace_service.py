@@ -51,6 +51,7 @@ def _to_connection_read(connection: MarketplaceConnection) -> MarketplaceConnect
         marketplace_id=connection.marketplace_id,
         merchant_id=connection.merchant_id,
         connected_at=connection.connected_at,
+        encrypted_access_token=connection.encrypted_access_token,
         marketplace=marketplace_read,
     )
 

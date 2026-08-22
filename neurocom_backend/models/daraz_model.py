@@ -1,8 +1,11 @@
-from pydantic import BaseModel
-from typing import List, Optional
+import re
+from bs4 import BeautifulSoup
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing import List, Optional, Dict, Any
 
 class Sku(BaseModel):
     SellerSku: str
+    Url: str
     color_family: str
     size: str
     quantity: int
@@ -30,3 +33,199 @@ class DarazProductCreate(BaseModel):
     warranty_type: str
     Images: List[str]
     Skus: List[Sku]
+
+
+# ---------------------------------------------------------------------------
+# Shapes returned by GET /products/get (daraz_service.get_all_products)
+# ---------------------------------------------------------------------------
+
+_BLOCK_TAGS = ("p", "div", "li", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6", "article", "tr")
+
+
+def _html_to_text(value: Optional[str]) -> Optional[str]:
+    """Strip Daraz's rich-text HTML (description/description_en/...) down to
+    plain, readable text so API consumers don't get raw markup.
+
+    Inline tags (span, b, a, ...) are joined with spaces so a sentence split
+    across several styled spans doesn't get broken onto separate lines;
+    block tags (p, div, li, ...) get a line break so paragraph/list
+    structure is preserved.
+    """
+    if not value:
+        return value
+    if "<" not in value:
+        # Already plain text — e.g. we're re-validating a payload that was
+        # already cleaned once and cached. BeautifulSoup's per-call parser
+        # setup has real fixed overhead even when there's no markup to
+        # parse, and this runs on every product/every field on every cache
+        # read, so skipping it here matters for cache-hit latency.
+        return value.strip()
+    soup = BeautifulSoup(value, "html.parser")
+    for br in soup.find_all("br"):
+        br.replace_with("\n")
+    for block in soup.find_all(_BLOCK_TAGS):
+        block.append("\n")
+    text = soup.get_text(separator=" ")
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r" *\n *", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+class DarazSkuWarehouseInventory(BaseModel):
+    occupyQuantity: int
+    quantity: int
+    totalQuantity: int
+    bizType: int
+    withholdQuantity: int
+    bizCode: str
+    warehouseType: str
+    warehouseCode: str
+    sellableQuantity: int
+
+
+class DarazProductSku(BaseModel):
+    # saleProp keys (color_family, size, ...) are sometimes duplicated as
+    # top-level sku fields and vary per product, so extras are kept.
+    model_config = ConfigDict(extra="allow")
+
+    SkuId: int
+    SellerSku: str
+    ShopSku: str
+    Status: str
+    quantity: int
+    Available: int
+    Images: List[str] = []
+    Url: Optional[str] = None
+    price: float
+    special_price: Optional[float] = None
+    special_from_date: Optional[str] = None
+    special_to_date: Optional[str] = None
+    special_from_time: Optional[str] = None
+    special_to_time: Optional[str] = None
+    special_time_format: Optional[str] = None
+    package_length: Optional[str] = None
+    package_width: Optional[str] = None
+    package_height: Optional[str] = None
+    package_weight: Optional[str] = None
+    saleProp: Dict[str, str] = {}
+    multiWarehouseInventories: List[DarazSkuWarehouseInventory] = []
+    fblWarehouseInventories: List[Any] = []
+    channelInventories: List[Any] = []
+
+
+class DarazProductAttributes(BaseModel):
+    # Attribute keys are category-specific (e.g. usage, occasion, material,
+    # cutlery_type, drying_rack_materials, ...), so extras are kept.
+    model_config = ConfigDict(extra="allow")
+
+    name: Optional[str] = None
+    name_en: Optional[str] = None
+    description: Optional[str] = None
+    description_en: Optional[str] = None
+    short_description: Optional[str] = None
+    short_description_en: Optional[str] = None
+    brand: Optional[str] = None
+    warranty_type: Optional[str] = None
+    Hazmat: Optional[str] = None
+    video: Optional[str] = None
+    source: Optional[str] = None
+    delivery_option_standard: Optional[str] = None
+    delivery_option_sof: Optional[str] = None
+    express_delivery: Optional[str] = None
+    promotion_whitebkg_image: List[str] = []
+
+    @field_validator(
+        "description", "description_en", "short_description", "short_description_en",
+        mode="before",
+    )
+    @classmethod
+    def _clean_html_fields(cls, value: Optional[str]) -> Optional[str]:
+        return _html_to_text(value)
+
+
+class DarazProduct(BaseModel):
+    item_id: int
+    primary_category: int
+    status: str
+    created_time: str
+    updated_time: str
+    images: List[str] = []
+    skus: List[DarazProductSku] = []
+    attributes: DarazProductAttributes
+
+
+class DarazProductsData(BaseModel):
+    total_products: int
+    products: List[DarazProduct]
+
+
+class DarazGetAllProductsResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    data: DarazProductsData
+    code: str
+    request_id: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Shapes returned by GET /order/reverse/return/detail/list
+# (daraz_service.get_all_reverse_orders_info)
+# ---------------------------------------------------------------------------
+
+class ReverseOrderLineProduct(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    product_id: int
+    sku: str
+
+
+class ReverseOrderBuyer(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    user_id: int
+
+
+class ReverseOrderLine(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    reverse_order_line_id: int
+    trade_order_line_id: int
+    platform_sku_id: str
+    seller_sku_id: str
+    productDTO: ReverseOrderLineProduct
+    buyer: ReverseOrderBuyer
+    reason_code: int
+    reason_text: str
+    reverse_status: str
+    ofc_status: str
+    whqc_decision: Optional[str] = None
+    is_need_refund: bool
+    is_dispute: bool
+    item_unit_price: int
+    refund_amount: int
+    refund_payment_method: str
+    tracking_number: str
+    trade_order_gmt_create: int
+    return_order_line_gmt_create: int
+    return_order_line_gmt_modified: int
+
+
+class ReverseOrderData(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    reverse_order_id: int
+    trade_order_id: int
+    request_type: str
+    shipping_type: str
+    is_rtm: bool
+    reverseOrderLineDTOList: List[ReverseOrderLine] = []
+
+
+class ReverseOrderInfo(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+    data: ReverseOrderData
+    code: str
+    request_id: Optional[str] = None
+    trace_id: Optional[str] = Field(default=None, alias="_trace_id_")

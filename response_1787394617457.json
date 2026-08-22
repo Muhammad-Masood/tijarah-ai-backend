@@ -1,0 +1,1240 @@
+[
+  {
+    "data": {
+      "reverse_order_id": 553892861836236,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "827335814_PK-3760499192",
+          "return_order_line_gmt_create": 1785881644,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1784343198,
+          "reason_text": "Item is not turning on",
+          "item_unit_price": 75900,
+          "trade_order_line_id": 245343202836236,
+          "return_order_line_gmt_modified": 1786523114,
+          "ofc_status": "RETURN_RTM_SHIPPED",
+          "seller_sku_id": "827335814-1747419685436-0",
+          "productDTO": {
+            "product_id": 827335814,
+            "sku": "3760499192"
+          },
+          "refund_payment_method": "MIXEDCARD",
+          "buyer": {
+            "user_id": 6005610736236
+          },
+          "reason_code": 10000159,
+          "whqc_decision": "return_to_merchant",
+          "reverse_status": "REFUND_SUCCESS",
+          "refund_amount": 85400,
+          "tracking_number": "779262691751",
+          "is_dispute": false,
+          "reverse_order_line_id": 553892861936236
+        }
+      ],
+      "shipping_type": "DROP_OFF",
+      "is_rtm": false,
+      "trade_order_id": 245343202736236
+    },
+    "code": "0",
+    "request_id": "0baf027617873945930711138",
+    "_trace_id_": "210150a217873945930697469ec188"
+  },
+  {
+    "data": {
+      "reverse_order_id": 553078108432273,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "827335814_PK-3760499192",
+          "return_order_line_gmt_create": 1784893748,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1784394942,
+          "reason_text": "I received the wrong item",
+          "item_unit_price": 75900,
+          "trade_order_line_id": 246523502732273,
+          "return_order_line_gmt_modified": 1785765678,
+          "ofc_status": "RETURN_CANCELED",
+          "seller_sku_id": "827335814-1747419685436-0",
+          "productDTO": {
+            "product_id": 827335814,
+            "sku": "3760499192"
+          },
+          "refund_payment_method": "WALLET_REFUNDCOUPON",
+          "buyer": {
+            "user_id": 6005674832273
+          },
+          "reason_code": 10000035,
+          "reverse_status": "REQUEST_CANCEL",
+          "refund_amount": 94500,
+          "tracking_number": "9011453891",
+          "is_dispute": false,
+          "reverse_order_line_id": 553078108532273
+        }
+      ],
+      "shipping_type": "DROP_OFF",
+      "is_rtm": false,
+      "trade_order_id": 246523502632273
+    },
+    "code": "0",
+    "request_id": "210133dc17873945939018718",
+    "_trace_id_": "2101267f17873945938995284ee811"
+  },
+  {
+    "data": {
+      "reverse_order_id": 553064911212234,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "827335814_PK-3760499192",
+          "return_order_line_gmt_create": 1784840369,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1784626224,
+          "reason_text": "Don't want the item anymore",
+          "item_unit_price": 75900,
+          "trade_order_line_id": 246646520412234,
+          "return_order_line_gmt_modified": 1785340675,
+          "ofc_status": "RETURN_RTC_DELIVERED",
+          "seller_sku_id": "827335814-1747419685436-0",
+          "productDTO": {
+            "product_id": 827335814,
+            "sku": "3760499192"
+          },
+          "refund_payment_method": "WALLET_REFUNDCOUPON",
+          "buyer": {
+            "user_id": 6005685712234
+          },
+          "reason_code": 10000039,
+          "whqc_decision": "return_to_customer",
+          "reverse_status": "REQUEST_REJECT",
+          "refund_amount": 93000,
+          "tracking_number": "PK-DEX204769237",
+          "is_dispute": false,
+          "reverse_order_line_id": 553064911312234
+        }
+      ],
+      "shipping_type": "PICK_UP",
+      "is_rtm": false,
+      "trade_order_id": 246646520312234
+    },
+    "code": "0",
+    "request_id": "2101578317873945947826354",
+    "_trace_id_": "21010b7817873945947793141e0992"
+  },
+  {
+    "data": {
+      "reverse_order_id": 552539984803515,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "796269189_PK-3668742984",
+          "return_order_line_gmt_create": 1783098542,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1782579398,
+          "reason_text": "Item is not turning on",
+          "item_unit_price": 49400,
+          "trade_order_line_id": 245335154503515,
+          "return_order_line_gmt_modified": 1783781127,
+          "ofc_status": "RETURN_RTM_DELIVERED",
+          "seller_sku_id": "796269189-1746034141266-0",
+          "productDTO": {
+            "product_id": 796269189,
+            "sku": "3668742984"
+          },
+          "refund_payment_method": "WALLET_REFUNDCOUPON",
+          "buyer": {
+            "user_id": 600051903515
+          },
+          "reason_code": 10000159,
+          "whqc_decision": "return_to_merchant",
+          "reverse_status": "REFUND_SUCCESS",
+          "refund_amount": 69400,
+          "tracking_number": "PK-DEX202699245",
+          "is_dispute": false,
+          "reverse_order_line_id": 552539984903515
+        }
+      ],
+      "shipping_type": "PICK_UP",
+      "is_rtm": false,
+      "trade_order_id": 245335154403515
+    },
+    "code": "0",
+    "request_id": "0baf027617873945956391193",
+    "_trace_id_": "2140cbcd17873945956372896efee6"
+  },
+  {
+    "data": {
+      "reverse_order_id": 552459144248555,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "796269189_PK-3668742984",
+          "return_order_line_gmt_create": 1782824056,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1781976597,
+          "reason_text": "Pictures do not match item",
+          "item_unit_price": 49400,
+          "trade_order_line_id": 243899449548555,
+          "return_order_line_gmt_modified": 1783781117,
+          "ofc_status": "RETURN_RTM_DELIVERED",
+          "seller_sku_id": "796269189-1746034141266-0",
+          "productDTO": {
+            "product_id": 796269189,
+            "sku": "3668742984"
+          },
+          "refund_payment_method": "PAYMENT_ACCOUNT",
+          "buyer": {
+            "user_id": 6005206448555
+          },
+          "reason_code": 10000160,
+          "whqc_decision": "return_to_merchant",
+          "reverse_status": "REFUND_SUCCESS",
+          "refund_amount": 59900,
+          "tracking_number": "PK-DEX202390417",
+          "is_dispute": false,
+          "reverse_order_line_id": 552459144348555
+        }
+      ],
+      "shipping_type": "DROP_OFF",
+      "is_rtm": false,
+      "trade_order_id": 243899449448555
+    },
+    "code": "0",
+    "request_id": "2140f1fa17873945969647268",
+    "_trace_id_": "2101418017873945969625430e0732"
+  },
+  {
+    "data": {
+      "reverse_order_id": 552095359887138,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "946132745_PK-4008951558",
+          "return_order_line_gmt_create": 1781421091,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1780848886,
+          "reason_text": "Don't want the item anymore",
+          "item_unit_price": 139900,
+          "trade_order_line_id": 244359358587138,
+          "return_order_line_gmt_modified": 1782573679,
+          "ofc_status": "RETURN_RTM_DELIVERED",
+          "seller_sku_id": "946132745-1767978963553-0",
+          "productDTO": {
+            "product_id": 946132745,
+            "sku": "4008951558"
+          },
+          "refund_payment_method": "WALLET_REFUNDCOUPON",
+          "buyer": {
+            "user_id": 87138
+          },
+          "reason_code": 10000039,
+          "whqc_decision": "return_to_merchant",
+          "reverse_status": "REFUND_SUCCESS",
+          "refund_amount": 161000,
+          "tracking_number": "PK-DEX200935578",
+          "is_dispute": false,
+          "reverse_order_line_id": 552095359987138
+        }
+      ],
+      "shipping_type": "PICK_UP",
+      "is_rtm": false,
+      "trade_order_id": 244359358487138
+    },
+    "code": "0",
+    "request_id": "210133dc17873945979048783",
+    "_trace_id_": "21010b7d17873945979011542eb7c7"
+  },
+  {
+    "data": {
+      "reverse_order_id": 552372468648848,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "796269189_PK-3668742984",
+          "return_order_line_gmt_create": 1780571674,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1780243891,
+          "reason_text": "I did not order this size",
+          "item_unit_price": 49400,
+          "trade_order_line_id": 242853442948848,
+          "return_order_line_gmt_modified": 1784640932,
+          "ofc_status": "RETURN_CANCELED",
+          "seller_sku_id": "796269189-1746034141266-0",
+          "productDTO": {
+            "product_id": 796269189,
+            "sku": "3668742984"
+          },
+          "refund_payment_method": "WALLET_REFUNDCOUPON",
+          "buyer": {
+            "user_id": 6005228048848
+          },
+          "reason_code": 10000033,
+          "reverse_status": "REQUEST_CANCEL",
+          "refund_amount": 76400,
+          "tracking_number": "PK-DEX199953929",
+          "is_dispute": false,
+          "reverse_order_line_id": 552372468748848
+        }
+      ],
+      "shipping_type": "DROP_OFF",
+      "is_rtm": false,
+      "trade_order_id": 242853442848848
+    },
+    "code": "0",
+    "request_id": "0baf027617873945988581259",
+    "_trace_id_": "2101410c17873945988552082e0abf"
+  },
+  {
+    "data": {
+      "reverse_order_id": 550958785662062,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "946132745_PK-4008951558",
+          "return_order_line_gmt_create": 1777357792,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1776962518,
+          "reason_text": "I received the wrong item",
+          "item_unit_price": 139900,
+          "trade_order_line_id": 240823229262062,
+          "return_order_line_gmt_modified": 1778336610,
+          "ofc_status": "RETURN_RTM_DELIVERED",
+          "seller_sku_id": "946132745-1767978963553-0",
+          "productDTO": {
+            "product_id": 946132745,
+            "sku": "4008951558"
+          },
+          "refund_payment_method": "PAYMENT_ACCOUNT",
+          "buyer": {
+            "user_id": 600000662062
+          },
+          "reason_code": 10000035,
+          "whqc_decision": "return_to_merchant",
+          "reverse_status": "REFUND_SUCCESS",
+          "refund_amount": 146600,
+          "tracking_number": "PK-DEX196279946",
+          "is_dispute": false,
+          "reverse_order_line_id": 550958785762062
+        }
+      ],
+      "shipping_type": "PICK_UP",
+      "is_rtm": false,
+      "trade_order_id": 240823229162062
+    },
+    "code": "0",
+    "request_id": "210133dc17873945998018809",
+    "_trace_id_": "2140e7b017873945997995071e2a02"
+  },
+  {
+    "data": {
+      "reverse_order_id": 550898976810655,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "927641650_PK-3985278056",
+          "return_order_line_gmt_create": 1777130005,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1773507219,
+          "reason_text": "I received the wrong item",
+          "item_unit_price": 234900,
+          "trade_order_line_id": 238648453510655,
+          "return_order_line_gmt_modified": 1777649149,
+          "ofc_status": "RETURN_RTC_DELIVERED",
+          "seller_sku_id": "927641650-1760725547474-1",
+          "productDTO": {
+            "product_id": 927641650,
+            "sku": "3985278056"
+          },
+          "refund_payment_method": "WALLET_REFUNDCOUPON",
+          "buyer": {
+            "user_id": 600060810655
+          },
+          "reason_code": 10000035,
+          "whqc_decision": "return_to_customer",
+          "reverse_status": "REQUEST_REJECT",
+          "refund_amount": 250700,
+          "tracking_number": "PK-DEX196033645",
+          "is_dispute": false,
+          "reverse_order_line_id": 550898976910655
+        }
+      ],
+      "shipping_type": "DROP_OFF",
+      "is_rtm": false,
+      "trade_order_id": 238648453410655
+    },
+    "code": "0",
+    "request_id": "210133dc17873946006778824",
+    "_trace_id_": "2101406f17873946006756690ef3bd"
+  },
+  {
+    "data": {
+      "reverse_order_id": 550700786347302,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "796269189_PK-3668742984",
+          "return_order_line_gmt_create": 1776452254,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1776015683,
+          "reason_text": "Item does not fit me",
+          "item_unit_price": 49400,
+          "trade_order_line_id": 241329580647302,
+          "return_order_line_gmt_modified": 1776763079,
+          "ofc_status": "RETURN_RTC_DELIVERED",
+          "seller_sku_id": "796269189-1746034141266-0",
+          "productDTO": {
+            "product_id": 796269189,
+            "sku": "3668742984"
+          },
+          "refund_payment_method": "MIXEDCARD",
+          "buyer": {
+            "user_id": 600045147302
+          },
+          "reason_code": 10000037,
+          "whqc_decision": "return_to_customer",
+          "reverse_status": "REQUEST_REJECT",
+          "refund_amount": 61900,
+          "tracking_number": "PK-DEX195176492",
+          "is_dispute": false,
+          "reverse_order_line_id": 550700786447302
+        }
+      ],
+      "shipping_type": "PICK_UP",
+      "is_rtm": false,
+      "trade_order_id": 241329580547302
+    },
+    "code": "0",
+    "request_id": "2101055117873946015095152",
+    "_trace_id_": "2101609617873946015065934ededc"
+  },
+  {
+    "data": {
+      "reverse_order_id": 551196643764353,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "796269189_PK-3668742984",
+          "return_order_line_gmt_create": 1776366107,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1776018365,
+          "reason_text": "Item does not fit me",
+          "item_unit_price": 49400,
+          "trade_order_line_id": 240236426564353,
+          "return_order_line_gmt_modified": 1777300803,
+          "ofc_status": "RETURN_RTM_DELIVERED",
+          "seller_sku_id": "796269189-1746034141266-0",
+          "productDTO": {
+            "product_id": 796269189,
+            "sku": "3668742984"
+          },
+          "refund_payment_method": "WALLET_REFUNDCOUPON",
+          "buyer": {
+            "user_id": 6005203664353
+          },
+          "reason_code": 10000037,
+          "whqc_decision": "return_to_merchant",
+          "reverse_status": "REFUND_SUCCESS",
+          "refund_amount": 76400,
+          "tracking_number": "PK-DEX195075426",
+          "is_dispute": false,
+          "reverse_order_line_id": 551196643864353
+        }
+      ],
+      "shipping_type": "PICK_UP",
+      "is_rtm": false,
+      "trade_order_id": 240236426464353
+    },
+    "code": "0",
+    "request_id": "2101055117873946023575182",
+    "_trace_id_": "21010c1617873946023553335ea91d"
+  },
+  {
+    "data": {
+      "reverse_order_id": 549907755810655,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "927641650_PK-3985278056",
+          "return_order_line_gmt_create": 1773761107,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1773507219,
+          "reason_text": "I received the wrong item",
+          "item_unit_price": 234900,
+          "trade_order_line_id": 238648453510655,
+          "return_order_line_gmt_modified": 1776282335,
+          "ofc_status": "INFO_ST_DOMESTIC_BACK_TO_SHIPPER_return_to_customer",
+          "seller_sku_id": "927641650-1760725547474-1",
+          "productDTO": {
+            "product_id": 927641650,
+            "sku": "3985278056"
+          },
+          "refund_payment_method": "WALLET_REFUNDCOUPON",
+          "buyer": {
+            "user_id": 600060810655
+          },
+          "reason_code": 10000035,
+          "whqc_decision": "return_to_customer",
+          "reverse_status": "REQUEST_REJECT",
+          "refund_amount": 250700,
+          "tracking_number": "PK-DEX191911979",
+          "is_dispute": false,
+          "reverse_order_line_id": 549907755910655
+        }
+      ],
+      "shipping_type": "DROP_OFF",
+      "is_rtm": false,
+      "trade_order_id": 238648453410655
+    },
+    "code": "0",
+    "request_id": "2140f1fa17873946033457430",
+    "_trace_id_": "21010c6917873946033436797e0390"
+  },
+  {
+    "data": {
+      "reverse_order_id": 550049475106771,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "827335814_PK-3760499192",
+          "return_order_line_gmt_create": 1772810682,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1772568246,
+          "reason_text": "Component or accessory is missing from the item",
+          "item_unit_price": 75900,
+          "trade_order_line_id": 237799450106771,
+          "return_order_line_gmt_modified": 1772883515,
+          "ofc_status": "RETURN_CANCELED",
+          "seller_sku_id": "827335814-1747419685436-0",
+          "productDTO": {
+            "product_id": 827335814,
+            "sku": "3760499192"
+          },
+          "refund_payment_method": "WALLET_REFUNDCOUPON",
+          "buyer": {
+            "user_id": 306771
+          },
+          "reason_code": 10000027,
+          "reverse_status": "REQUEST_CANCEL",
+          "refund_amount": 87400,
+          "tracking_number": "PK-DEX190511910",
+          "is_dispute": false,
+          "reverse_order_line_id": 550049475206771
+        },
+        {
+          "platform_sku_id": "827335814_PK-3760499192",
+          "return_order_line_gmt_create": 1772810682,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1772568246,
+          "reason_text": "Component or accessory is missing from the item",
+          "item_unit_price": 75900,
+          "trade_order_line_id": 237799450206771,
+          "return_order_line_gmt_modified": 1772883515,
+          "ofc_status": "RETURN_CANCELED",
+          "seller_sku_id": "827335814-1747419685436-0",
+          "productDTO": {
+            "product_id": 827335814,
+            "sku": "3760499192"
+          },
+          "refund_payment_method": "WALLET_REFUNDCOUPON",
+          "buyer": {
+            "user_id": 306771
+          },
+          "reason_code": 10000027,
+          "reverse_status": "REQUEST_CANCEL",
+          "refund_amount": 87400,
+          "tracking_number": "PK-DEX190511910",
+          "is_dispute": false,
+          "reverse_order_line_id": 550049475306771
+        }
+      ],
+      "shipping_type": "PICK_UP",
+      "is_rtm": false,
+      "trade_order_id": 237799450006771
+    },
+    "code": "0",
+    "request_id": "210115c517873946041277316",
+    "_trace_id_": "2101404617873946041251791ee212"
+  },
+  {
+    "data": {
+      "reverse_order_id": 549369857908131,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "796269189_PK-3668742984",
+          "return_order_line_gmt_create": 1770882272,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1770449773,
+          "reason_text": "Item does not fit me",
+          "item_unit_price": 49400,
+          "trade_order_line_id": 237247156008131,
+          "return_order_line_gmt_modified": 1772540625,
+          "ofc_status": "INFO_ST_RETURN_RTM_LOST_BY_3PL_return_to_merchant",
+          "seller_sku_id": "796269189-1746034141266-0",
+          "productDTO": {
+            "product_id": 796269189,
+            "sku": "3668742984"
+          },
+          "refund_payment_method": "WALLET_REFUNDCOUPON",
+          "buyer": {
+            "user_id": 6005444608131
+          },
+          "reason_code": 10000037,
+          "whqc_decision": "return_to_merchant",
+          "reverse_status": "REFUND_SUCCESS",
+          "refund_amount": 70500,
+          "tracking_number": "PK-DEX187884884",
+          "is_dispute": false,
+          "reverse_order_line_id": 549369858008131
+        }
+      ],
+      "shipping_type": "PICK_UP",
+      "is_rtm": false,
+      "trade_order_id": 237247155908131
+    },
+    "code": "0",
+    "request_id": "2101578317873946049376602",
+    "_trace_id_": "21010b7817873946049358694e09d3"
+  },
+  {
+    "data": {
+      "reverse_order_id": 548531662157298,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "796269189_PK-3668742984",
+          "return_order_line_gmt_create": 1768333576,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1768012736,
+          "reason_text": "Item does not fit me",
+          "item_unit_price": 48900,
+          "trade_order_line_id": 234469098557298,
+          "return_order_line_gmt_modified": 1768575128,
+          "ofc_status": "RETURN_RTC_DELIVERED",
+          "seller_sku_id": "796269189-1746034141266-0",
+          "productDTO": {
+            "product_id": 796269189,
+            "sku": "3668742984"
+          },
+          "refund_payment_method": "PAYMENT_ACCOUNT",
+          "buyer": {
+            "user_id": 600042657298
+          },
+          "reason_code": 10000037,
+          "whqc_decision": "return_to_customer",
+          "reverse_status": "REQUEST_REJECT",
+          "refund_amount": 60900,
+          "tracking_number": "PK-DEX184928890",
+          "is_dispute": false,
+          "reverse_order_line_id": 548531662257298
+        }
+      ],
+      "shipping_type": "PICK_UP",
+      "is_rtm": false,
+      "trade_order_id": 234469098457298
+    },
+    "code": "0",
+    "request_id": "2140f1fa17873946057397494",
+    "_trace_id_": "2140e7b017873946057375634e2a02"
+  },
+  {
+    "data": {
+      "reverse_order_id": 548507826009580,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "927641650_PK-3985278056",
+          "return_order_line_gmt_create": 1768282904,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1767253636,
+          "reason_text": "Pictures do not match item",
+          "item_unit_price": 234900,
+          "trade_order_line_id": 233857888809580,
+          "return_order_line_gmt_modified": 1768656230,
+          "ofc_status": "RETURN_RTM_DELIVERED",
+          "seller_sku_id": "927641650-1760725547474-1",
+          "productDTO": {
+            "product_id": 927641650,
+            "sku": "3985278056"
+          },
+          "refund_payment_method": "WALLET_REFUNDCOUPON",
+          "buyer": {
+            "user_id": 600050109580
+          },
+          "reason_code": 10000160,
+          "whqc_decision": "return_to_merchant",
+          "reverse_status": "REFUND_SUCCESS",
+          "refund_amount": 257900,
+          "tracking_number": "PK-DEX184848675",
+          "is_dispute": false,
+          "reverse_order_line_id": 548507826109580
+        }
+      ],
+      "shipping_type": "PICK_UP",
+      "is_rtm": false,
+      "trade_order_id": 233857888709580
+    },
+    "code": "0",
+    "request_id": "0baf027617873946065521487",
+    "_trace_id_": "2140e84d17873946065501262ec66d"
+  },
+  {
+    "data": {
+      "reverse_order_id": 548284298909580,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "927641650_PK-3985278056",
+          "return_order_line_gmt_create": 1767625385,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1767253636,
+          "reason_text": "Pictures do not match item",
+          "item_unit_price": 234900,
+          "trade_order_line_id": 233857888809580,
+          "return_order_line_gmt_modified": 1768035836,
+          "ofc_status": "RETURN_RTC_DELIVERED",
+          "seller_sku_id": "927641650-1760725547474-1",
+          "productDTO": {
+            "product_id": 927641650,
+            "sku": "3985278056"
+          },
+          "refund_payment_method": "WALLET_REFUNDCOUPON",
+          "buyer": {
+            "user_id": 600050109580
+          },
+          "reason_code": 10000160,
+          "whqc_decision": "return_to_customer",
+          "reverse_status": "REQUEST_REJECT",
+          "refund_amount": 257900,
+          "tracking_number": "PK-DEX183971151",
+          "is_dispute": false,
+          "reverse_order_line_id": 548284299009580
+        }
+      ],
+      "shipping_type": "PICK_UP",
+      "is_rtm": false,
+      "trade_order_id": 233857888709580
+    },
+    "code": "0",
+    "request_id": "210133dc17873946073851030",
+    "_trace_id_": "21010c9317873946073824110ed873"
+  },
+  {
+    "data": {
+      "reverse_order_id": 547745431971974,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "796269189_PK-3668742984",
+          "return_order_line_gmt_create": 1766135311,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1765563307,
+          "reason_text": "I did not order this size",
+          "item_unit_price": 48900,
+          "trade_order_line_id": 232435296771974,
+          "return_order_line_gmt_modified": 1766477270,
+          "ofc_status": "RETURN_LOGISTIC_CLOSURE_scrap",
+          "seller_sku_id": "796269189-1746034141266-0",
+          "productDTO": {
+            "product_id": 796269189,
+            "sku": "3668742984"
+          },
+          "refund_payment_method": "WALLET_REFUNDCOUPON",
+          "buyer": {
+            "user_id": 600053871974
+          },
+          "reason_code": 10000033,
+          "whqc_decision": "scrap",
+          "reverse_status": "REFUND_SUCCESS",
+          "refund_amount": 53200,
+          "tracking_number": "PK-DEX182288865",
+          "is_dispute": false,
+          "reverse_order_line_id": 547745432071974
+        }
+      ],
+      "shipping_type": "PICK_UP",
+      "is_rtm": false,
+      "trade_order_id": 232435296671974
+    },
+    "code": "0",
+    "request_id": "210115c517873946082047445",
+    "_trace_id_": "2101410c17873946082026722e0abe"
+  },
+  {
+    "data": {
+      "reverse_order_id": 547357088528260,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "932570806_PK-3992434654",
+          "return_order_line_gmt_create": 1765384618,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1764695174,
+          "reason_text": "I received the wrong item",
+          "item_unit_price": 194900,
+          "trade_order_line_id": 232624350328260,
+          "return_order_line_gmt_modified": 1766230772,
+          "ofc_status": "RETURN_RTM_DELIVERED",
+          "seller_sku_id": "932570806-1762674059191-0",
+          "productDTO": {
+            "product_id": 932570806,
+            "sku": "3992434654"
+          },
+          "refund_payment_method": "WALLET_REFUNDCOUPON",
+          "buyer": {
+            "user_id": 6005258128260
+          },
+          "reason_code": 10000035,
+          "whqc_decision": "return_to_merchant",
+          "reverse_status": "REFUND_SUCCESS",
+          "refund_amount": 218900,
+          "tracking_number": "PK-DEX181241241",
+          "is_dispute": false,
+          "reverse_order_line_id": 547357088628260
+        }
+      ],
+      "shipping_type": "PICK_UP",
+      "is_rtm": false,
+      "trade_order_id": 232624350228260
+    },
+    "code": "0",
+    "request_id": "2101055117873946090215425",
+    "_trace_id_": "2140e84c17873946090188988e448c"
+  },
+  {
+    "data": {
+      "reverse_order_id": 547344884118413,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "932570806_PK-3992434654",
+          "return_order_line_gmt_create": 1765368013,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1764396459,
+          "reason_text": "Item is not turning on",
+          "item_unit_price": 194900,
+          "trade_order_line_id": 231326270818413,
+          "return_order_line_gmt_modified": 1766230773,
+          "ofc_status": "RETURN_RTM_DELIVERED",
+          "seller_sku_id": "932570806-1762674059191-0",
+          "productDTO": {
+            "product_id": 932570806,
+            "sku": "3992434654"
+          },
+          "refund_payment_method": "WALLET_REFUNDCOUPON",
+          "buyer": {
+            "user_id": 600040218413
+          },
+          "reason_code": 10000159,
+          "whqc_decision": "return_to_merchant",
+          "reverse_status": "REFUND_SUCCESS",
+          "refund_amount": 218900,
+          "tracking_number": "PK-DEX181222373",
+          "is_dispute": false,
+          "reverse_order_line_id": 547344884218413
+        }
+      ],
+      "shipping_type": "PICK_UP",
+      "is_rtm": false,
+      "trade_order_id": 231326270718413
+    },
+    "code": "0",
+    "request_id": "2101055117873946098765457",
+    "_trace_id_": "2140e84717873946098741229e9458"
+  },
+  {
+    "data": {
+      "reverse_order_id": 547300002764373,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "932570806_PK-3992434654",
+          "return_order_line_gmt_create": 1765264566,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1764766310,
+          "reason_text": "Pictures do not match item",
+          "item_unit_price": 194900,
+          "trade_order_line_id": 232685330364373,
+          "return_order_line_gmt_modified": 1766230773,
+          "ofc_status": "RETURN_RTM_DELIVERED",
+          "seller_sku_id": "932570806-1762674059191-0",
+          "productDTO": {
+            "product_id": 932570806,
+            "sku": "3992434654"
+          },
+          "refund_payment_method": "MIXEDCARD",
+          "buyer": {
+            "user_id": 864373
+          },
+          "reason_code": 10000160,
+          "whqc_decision": "return_to_merchant",
+          "reverse_status": "REFUND_SUCCESS",
+          "refund_amount": 184900,
+          "tracking_number": "9011386201",
+          "is_dispute": false,
+          "reverse_order_line_id": 547300002864373
+        }
+      ],
+      "shipping_type": "DROP_OFF",
+      "is_rtm": false,
+      "trade_order_id": 232685330264373
+    },
+    "code": "0",
+    "request_id": "2140f1fa17873946107157653",
+    "_trace_id_": "2140f94717873946107133662e244d"
+  },
+  {
+    "data": {
+      "reverse_order_id": 546640375336166,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "932570806_PK-3992434654",
+          "return_order_line_gmt_create": 1764773203,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1764216919,
+          "reason_text": "The item is fake or is a counterfeit item",
+          "item_unit_price": 194900,
+          "trade_order_line_id": 232166756536166,
+          "return_order_line_gmt_modified": 1765464575,
+          "ofc_status": "RETURN_RTM_DELIVERED",
+          "seller_sku_id": "932570806-1762674059191-0",
+          "productDTO": {
+            "product_id": 932570806,
+            "sku": "3992434654"
+          },
+          "refund_payment_method": "WALLET_REFUNDCOUPON",
+          "buyer": {
+            "user_id": 6005563536166
+          },
+          "reason_code": 20000051,
+          "whqc_decision": "return_to_merchant",
+          "reverse_status": "REFUND_SUCCESS",
+          "refund_amount": 213000,
+          "tracking_number": "PK-DEX180531634",
+          "is_dispute": false,
+          "reverse_order_line_id": 546640375436166
+        }
+      ],
+      "shipping_type": "PICK_UP",
+      "is_rtm": false,
+      "trade_order_id": 232166756436166
+    },
+    "code": "0",
+    "request_id": "0baf027617873946116051676",
+    "_trace_id_": "2101205517873946116023217eb216"
+  },
+  {
+    "data": {
+      "reverse_order_id": 546180267835768,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "932570806_PK-3988996483",
+          "return_order_line_gmt_create": 1763041701,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1762502414,
+          "reason_text": "Pictures do not match item",
+          "item_unit_price": 178000,
+          "trade_order_line_id": 229499769435768,
+          "return_order_line_gmt_modified": 1763907201,
+          "ofc_status": "RETURN_RTC_DELIVERED",
+          "seller_sku_id": "932570806-1761622472193-0",
+          "productDTO": {
+            "product_id": 932570806,
+            "sku": "3988996483"
+          },
+          "refund_payment_method": "MIXEDCARD",
+          "buyer": {
+            "user_id": 2835768
+          },
+          "reason_code": 10000160,
+          "whqc_decision": "return_to_customer",
+          "reverse_status": "REQUEST_REJECT",
+          "refund_amount": 181900,
+          "tracking_number": "PK-DEX177861517",
+          "is_dispute": false,
+          "reverse_order_line_id": 546180267935768
+        }
+      ],
+      "shipping_type": "DROP_OFF",
+      "is_rtm": false,
+      "trade_order_id": 229499769335768
+    },
+    "code": "0",
+    "request_id": "2140f1fa17873946124027707",
+    "_trace_id_": "2140e84817873946123996956ecf28"
+  },
+  {
+    "data": {
+      "reverse_order_id": 545500416924756,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "796269189_PK-3668742984",
+          "return_order_line_gmt_create": 1761732025,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1761423608,
+          "reason_text": "Pictures do not match item",
+          "item_unit_price": 48900,
+          "trade_order_line_id": 227607481324756,
+          "return_order_line_gmt_modified": 1762266990,
+          "ofc_status": "RETURN_RTM_DELIVERED",
+          "seller_sku_id": "796269189-1746034141266-0",
+          "productDTO": {
+            "product_id": 796269189,
+            "sku": "3668742984"
+          },
+          "refund_payment_method": "PAYMENT_ACCOUNT",
+          "buyer": {
+            "user_id": 6005451424756
+          },
+          "reason_code": 10000160,
+          "whqc_decision": "return_to_merchant",
+          "reverse_status": "REFUND_SUCCESS",
+          "refund_amount": 47900,
+          "tracking_number": "PK-DEX175787676",
+          "is_dispute": false,
+          "reverse_order_line_id": 545500417024756
+        }
+      ],
+      "shipping_type": "PICK_UP",
+      "is_rtm": false,
+      "trade_order_id": 227607481224756
+    },
+    "code": "0",
+    "request_id": "210115c517873946132987627",
+    "_trace_id_": "2101205517873946132964821eb26b"
+  },
+  {
+    "data": {
+      "reverse_order_id": 544303315408146,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "796269189_PK-3668742984",
+          "return_order_line_gmt_create": 1759653754,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1759338568,
+          "reason_text": "Item does not fit me",
+          "item_unit_price": 48900,
+          "trade_order_line_id": 225942001908146,
+          "return_order_line_gmt_modified": 1761057449,
+          "ofc_status": "RETURN_RTM_DELIVERED",
+          "seller_sku_id": "796269189-1746034141266-0",
+          "productDTO": {
+            "product_id": 796269189,
+            "sku": "3668742984"
+          },
+          "refund_payment_method": "WALLET_REFUNDCOUPON",
+          "buyer": {
+            "user_id": 6005374608146
+          },
+          "reason_code": 10000037,
+          "whqc_decision": "return_to_merchant",
+          "reverse_status": "REFUND_SUCCESS",
+          "refund_amount": 63500,
+          "tracking_number": "PK-DEX173334846",
+          "is_dispute": false,
+          "reverse_order_line_id": 544303315508146
+        }
+      ],
+      "shipping_type": "PICK_UP",
+      "is_rtm": false,
+      "trade_order_id": 225942001808146
+    },
+    "code": "0",
+    "request_id": "210133dc17873946141511274",
+    "_trace_id_": "21010b7c17873946141497232e53e8"
+  },
+  {
+    "data": {
+      "reverse_order_id": 543324800268663,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "827335814_PK-3760499192",
+          "return_order_line_gmt_create": 1756033912,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1755722192,
+          "reason_text": "Pictures do not match item",
+          "item_unit_price": 75900,
+          "trade_order_line_id": 223690793468663,
+          "return_order_line_gmt_modified": 1757319904,
+          "ofc_status": "RETURN_RTM_DELIVERED",
+          "seller_sku_id": "827335814-1747419685436-0",
+          "productDTO": {
+            "product_id": 827335814,
+            "sku": "3760499192"
+          },
+          "refund_payment_method": "WALLET_REFUNDCOUPON",
+          "buyer": {
+            "user_id": 600031368663
+          },
+          "reason_code": 10000160,
+          "whqc_decision": "return_to_merchant",
+          "reverse_status": "REFUND_SUCCESS",
+          "refund_amount": 69800,
+          "tracking_number": "PK-DEX169020586",
+          "is_dispute": false,
+          "reverse_order_line_id": 543324800368663
+        },
+        {
+          "platform_sku_id": "827335814_PK-3760499192",
+          "return_order_line_gmt_create": 1756033912,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1755722192,
+          "reason_text": "Pictures do not match item",
+          "item_unit_price": 75900,
+          "trade_order_line_id": 223690793568663,
+          "return_order_line_gmt_modified": 1756824563,
+          "ofc_status": "RETURN_RTM_DELIVERED",
+          "seller_sku_id": "827335814-1747419685436-0",
+          "productDTO": {
+            "product_id": 827335814,
+            "sku": "3760499192"
+          },
+          "refund_payment_method": "WALLET_REFUNDCOUPON",
+          "buyer": {
+            "user_id": 600031368663
+          },
+          "reason_code": 10000160,
+          "whqc_decision": "return_to_merchant",
+          "reverse_status": "REFUND_SUCCESS",
+          "refund_amount": 69900,
+          "tracking_number": "PK-DEX169020586",
+          "is_dispute": false,
+          "reverse_order_line_id": 543324800468663
+        }
+      ],
+      "shipping_type": "PICK_UP",
+      "is_rtm": false,
+      "trade_order_id": 223690793368663
+    },
+    "code": "0",
+    "request_id": "2101055117873946149565640",
+    "_trace_id_": "2101431e17873946149545758e0b31"
+  },
+  {
+    "data": {
+      "reverse_order_id": 542747436203692,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "827335814_PK-3760499192",
+          "return_order_line_gmt_create": 1754738209,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1753274298,
+          "reason_text": "Item does not fit me",
+          "item_unit_price": 75900,
+          "trade_order_line_id": 220322887703692,
+          "return_order_line_gmt_modified": 1755097744,
+          "ofc_status": "RETURN_RTM_DELIVERED",
+          "seller_sku_id": "827335814-1747419685436-0",
+          "productDTO": {
+            "product_id": 827335814,
+            "sku": "3760499192"
+          },
+          "refund_payment_method": "PAYMENT_ACCOUNT",
+          "buyer": {
+            "user_id": 600013203692
+          },
+          "reason_code": 10000037,
+          "whqc_decision": "return_to_merchant",
+          "reverse_status": "REFUND_SUCCESS",
+          "refund_amount": 93900,
+          "tracking_number": "779259213153",
+          "is_dispute": false,
+          "reverse_order_line_id": 542747436303692
+        }
+      ],
+      "shipping_type": "DROP_OFF",
+      "is_rtm": false,
+      "trade_order_id": 220322887603692
+    },
+    "code": "0",
+    "request_id": "210133dc17873946157971326",
+    "_trace_id_": "21010c8d17873946157941899e109b"
+  },
+  {
+    "data": {
+      "reverse_order_id": 542414414903692,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "827335814_PK-3760499192",
+          "return_order_line_gmt_create": 1753952519,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1753274298,
+          "reason_text": "Item does not fit me",
+          "item_unit_price": 75900,
+          "trade_order_line_id": 220322887703692,
+          "return_order_line_gmt_modified": 1754567202,
+          "ofc_status": "RETURN_CANCELED",
+          "seller_sku_id": "827335814-1747419685436-0",
+          "productDTO": {
+            "product_id": 827335814,
+            "sku": "3760499192"
+          },
+          "refund_payment_method": "PAYMENT_ACCOUNT",
+          "buyer": {
+            "user_id": 600013203692
+          },
+          "reason_code": 10000037,
+          "reverse_status": "REQUEST_CANCEL",
+          "refund_amount": 93900,
+          "tracking_number": "779259140978",
+          "is_dispute": false,
+          "reverse_order_line_id": 542414415003692
+        }
+      ],
+      "shipping_type": "DROP_OFF",
+      "is_rtm": false,
+      "trade_order_id": 220322887603692
+    },
+    "code": "0",
+    "request_id": "2140f1fa17873946166037851",
+    "_trace_id_": "2101205517873946166005228eb215"
+  },
+  {
+    "data": {
+      "reverse_order_id": 541473826865534,
+      "request_type": "RETURN",
+      "reverseOrderLineDTOList": [
+        {
+          "platform_sku_id": "795028067_PK-3689284520",
+          "return_order_line_gmt_create": 1751631585,
+          "is_need_refund": true,
+          "trade_order_gmt_create": 1751361049,
+          "reason_text": "I received the wrong item",
+          "item_unit_price": 244900,
+          "trade_order_line_id": 219190566665534,
+          "return_order_line_gmt_modified": 1752935186,
+          "ofc_status": "RETURN_RTM_DELIVERED",
+          "seller_sku_id": "795028067-1746615727390-0",
+          "productDTO": {
+            "product_id": 795028067,
+            "sku": "3689284520"
+          },
+          "refund_payment_method": "WALLET_REFUNDCOUPON",
+          "buyer": {
+            "user_id": 6005020065534
+          },
+          "reason_code": 10000035,
+          "whqc_decision": "return_to_merchant",
+          "reverse_status": "REFUND_SUCCESS",
+          "refund_amount": 240000,
+          "tracking_number": "PK-DEX163128562",
+          "is_dispute": false,
+          "reverse_order_line_id": 541473826965534
+        }
+      ],
+      "shipping_type": "DROP_OFF",
+      "is_rtm": false,
+      "trade_order_id": 219190566565534
+    },
+    "code": "0",
+    "request_id": "2101578317873946174757032",
+    "_trace_id_": "2101448e17873946174726619ec571"
+  }
+]

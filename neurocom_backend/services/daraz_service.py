@@ -3,7 +3,8 @@ import os
 from dotenv import load_dotenv
 from fastapi.responses import JSONResponse
 import json
-from neurocom_backend.models.daraz_model import DarazProductCreate
+from neurocom_backend.models.daraz_model import DarazProductCreate, DarazGetAllProductsResponse, DarazProduct, ReverseOrderInfo
+from neurocom_backend.utils.redis_cache import get_or_refresh, fingerprint
 from typing import Any
 from datetime import datetime, timedelta
 import concurrent.futures
@@ -23,28 +24,57 @@ def get_access_token(code: str):
     access_token = access_token_response.body["access_token"]
     return access_token
 
-def get_all_products(access_token: str):
-    print("access_token: ", access_token)
+# Daraz stamps every response with a fresh request_id / _trace_id_ even when
+# the underlying product data hasn't changed at all. If we cached/compared
+# those, the background revalidation would treat *every* call as "changed"
+# and re-run the (expensive) cleanup below on every single request. They're
+# call metadata, not product data, so they're dropped before hashing/caching.
+_VOLATILE_ENVELOPE_KEYS = ("request_id", "_trace_id_")
+
+def _fetch_all_products_raw(access_token: str) -> dict:
+    """Live call to Daraz. Cheap-ish (one HTTP round trip) but returns the
+    raw body as-is (HTML descriptions, volatile metadata included minus the
+    always-different request_id/_trace_id_ keys) so change-detection can
+    hash it without paying for HTML cleanup first."""
     all_products_request = LazopRequest("/products/get",'GET')
     all_products_request.add_api_param("offset", "0")
     all_products_request.add_api_param("limit", "50")
     all_products_request.add_api_param('filter', 'live')
     all_products_response = lazop_client.execute(all_products_request, access_token)
     print("Products: ", all_products_response.body)
-    return all_products_response.body
-    
+    body = all_products_response.body
+    if isinstance(body, str):
+        body = json.loads(body)
+    for key in _VOLATILE_ENVELOPE_KEYS:
+        body.pop(key, None)
+    return body
+
+def _clean_all_products_payload(raw_body: dict) -> dict:
+    """Expensive step (BeautifulSoup HTML->text cleanup + full model
+    validation). Only called when the raw payload's hash has actually
+    changed since the last cache write — see get_or_refresh."""
+    validated = DarazGetAllProductsResponse.model_validate(raw_body)
+    return validated.model_dump(mode="json")
+
+def get_all_products(access_token: str) -> DarazGetAllProductsResponse:
+    print("access_token: ", access_token)
+    cache_key = f"daraz:products:{fingerprint(access_token)}"
+    body = get_or_refresh(
+        cache_key,
+        fetch_raw_fn=lambda: _fetch_all_products_raw(access_token),
+        transform_fn=_clean_all_products_payload,
+    )
+    return DarazGetAllProductsResponse.model_validate(body)
+
 def get_all_products_reviews(access_token: str):
     all_products = get_all_products(access_token)
 
-    if isinstance(all_products, str):
-        all_products = json.loads(all_products)
-
-    product_list = all_products.get("data", {}).get("products", [])
+    product_list: list[DarazProduct] = all_products.data.products
     print(f"Fetching reviews for {len(product_list)} products: ")
     all_reviews = []
 
-    def fetch_reviews(product):
-        item_id = product.get("item_id")
+    def fetch_reviews(product: DarazProduct):
+        item_id = product.item_id
         if not item_id:
             return None
         try:
@@ -425,12 +455,24 @@ def trace_order_by_id(order_id: str, access_token: str):
     return track_order_response.body
 
 def get_reverse_orders(access_token: str):
-    reverse_orders_request = LazopRequest("/reverse/getreverseordersforseller",'GET')
-    reverse_orders_request.add_api_param('page_no', '1')
-    reverse_orders_request.add_api_param('page_size', '10')
-    reverse_orders_response = lazop_client.execute(reverse_orders_request, access_token)
-    print("Reverse orders: ", reverse_orders_response.body)
-    return reverse_orders_response.body["result"]["items"]
+    page_no = 1
+    page_size = 100
+    all_items = []
+    total = None
+
+    while total is None or page_size * (page_no - 1) < total:
+        reverse_orders_request = LazopRequest("/reverse/getreverseordersforseller", 'GET')
+        reverse_orders_request.add_api_param('page_no', str(page_no))
+        reverse_orders_request.add_api_param('page_size', str(page_size))
+        reverse_orders_request.add_api_param("request_type_list", json.dumps(["RETURN", "ONLY_REFUND"]))
+        reverse_orders_response = lazop_client.execute(reverse_orders_request, access_token)
+        print("Reverse orders: ", reverse_orders_response.body)
+        result = reverse_orders_response.body["result"]
+        total = result["total"]
+        all_items.extend(result["items"])
+        page_no += 1
+
+    return [item for item in all_items if item.get("request_type") != "CANCEL"]
 
 def get_reverse_order_info(reverse_order_id: str, access_token: str):
     reverse_order_request = LazopRequest("/order/reverse/return/detail/list",'GET')
@@ -439,7 +481,7 @@ def get_reverse_order_info(reverse_order_id: str, access_token: str):
     print("Reverse orders info: ", reverse_order_response.body)
     return reverse_order_response.body
 
-def get_all_reverse_orders_info(access_token: str):
+def _fetch_all_reverse_orders_info_raw(access_token: str) -> list:
   reverse_orders = get_reverse_orders(access_token)
   print("reverse orders: ", reverse_orders)
   reverse_orders_info = []
@@ -450,6 +492,22 @@ def get_all_reverse_orders_info(access_token: str):
     reverse_orders_info.append(info)
   print("reverse orders info: ",reverse_orders_info )
   return reverse_orders_info
+
+def _clean_reverse_orders_info_payload(raw_items: list) -> list:
+  return [
+    ReverseOrderInfo.model_validate(item).model_dump(mode="json", by_alias=True)
+    for item in raw_items
+  ]
+
+def get_all_reverse_orders_info(access_token: str) -> list[ReverseOrderInfo]:
+  cache_key = f"daraz:reverse_orders_info:{fingerprint(access_token)}"
+  body = get_or_refresh(
+    cache_key,
+    fetch_raw_fn=lambda: _fetch_all_reverse_orders_info_raw(access_token),
+    transform_fn=_clean_reverse_orders_info_payload,
+    enable_background_refresh=False,
+  )
+  return [ReverseOrderInfo.model_validate(item) for item in body]
 
 def payout_statement(access_token: str):
   request = LazopRequest('/finance/payout/status/get','GET')

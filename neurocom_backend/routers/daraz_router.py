@@ -4,8 +4,8 @@ from fastapi import FastAPI, Request, Header, UploadFile, File, Body, APIRouter,
 from neurocom_backend.services.daraz_service import lazop_client, get_access_token, get_all_products, get_auth_code, create_new_product, get_category_attributes, migrate_images, get_migrated_images,migrate_image, get_all_categories, get_category_children, get_category_by_id, get_all_orders, trace_order_by_id, get_product_reviews, get_all_reverse_orders_info, get_order_logistic_details, payout_statement, get_orders_with_items, get_all_products_reviews
 from neurocom_backend.utils.security import decrypt_value
 from fastapi.responses import RedirectResponse, JSONResponse
-from neurocom_backend.models.daraz_model import DarazProductCreate
-from typing import Annotated, Optional, Any
+from neurocom_backend.models.daraz_model import DarazProductCreate, DarazGetAllProductsResponse, ReverseOrderInfo
+from typing import Annotated, Optional, Any, List
 import os
 from urllib.parse import urlencode
 from dotenv import load_dotenv
@@ -55,8 +55,8 @@ async def auth_code():
 async def access_token(code: str):
     return get_access_token(code)
 
-@router.get('/get_all_products')
-def all_products(access_token: str = Depends(get_daraz_access_token)):
+@router.get('/get_all_products', response_model=DarazGetAllProductsResponse)
+def all_products(access_token: str = Depends(get_daraz_access_token)) -> DarazGetAllProductsResponse:
     return get_all_products(access_token)
 
 @router.get('/get_all_product_reviews')
@@ -115,7 +115,7 @@ async def trace_order(order_id: str, access_token: str = Depends(get_daraz_acces
 async def order_logistics_details(order_id: str, access_token: str = Depends(get_daraz_access_token)):
     return get_order_logistic_details(order_id, access_token)
 
-@router.get('/get_all_reverse_orders_info')
+@router.get('/get_all_reverse_orders_info', response_model=List[ReverseOrderInfo])
 async def get_reverse_orders_info(access_token: str = Depends(get_daraz_access_token)):
     return get_all_reverse_orders_info(access_token)
 

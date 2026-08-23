@@ -1,10 +1,10 @@
 from fastapi.middleware.cors import CORSMiddleware
 import requests
 from fastapi import FastAPI, Request, Header, UploadFile, File, Body, APIRouter, Depends, HTTPException, status
-from neurocom_backend.services.daraz_service import lazop_client, get_access_token, get_all_products, get_auth_code, create_new_product, get_category_attributes, migrate_images, get_migrated_images,migrate_image, get_all_categories, get_category_children, get_category_by_id, get_all_orders, trace_order_by_id, get_product_reviews, get_all_reverse_orders_info, get_order_logistic_details, payout_statement, get_orders_with_items, get_all_products_reviews
+from neurocom_backend.services.daraz_service import lazop_client, get_access_token, get_all_products, get_auth_code, create_new_product, get_category_attributes, migrate_images, get_migrated_images,migrate_image, get_all_categories, get_category_children, get_category_by_id, get_all_orders, trace_order_by_id, get_product_reviews, get_all_reverse_orders_info, get_order_logistic_details, payout_statement, get_orders_with_items, get_all_products_reviews, scrape_product_reviews
 from neurocom_backend.utils.security import decrypt_value
 from fastapi.responses import RedirectResponse, JSONResponse
-from neurocom_backend.models.daraz_model import DarazProductCreate, DarazGetAllProductsResponse, ReverseOrderInfo
+from neurocom_backend.models.daraz_model import DarazProductCreate, DarazGetAllProductsResponse, ReverseOrderInfo, ScrapedProductReviewsResponse
 from typing import Annotated, Optional, Any, List
 import os
 from urllib.parse import urlencode
@@ -66,6 +66,10 @@ def all_products_reviews( access_token: str = Depends(get_daraz_access_token)):
 @router.get('/get_product_reviews')
 def product_reviews(item_id: str, access_token: str = Depends(get_daraz_access_token)):
     return get_product_reviews(item_id, access_token)
+
+@router.get('/scrape_product_reviews', response_model=ScrapedProductReviewsResponse)
+def scraped_product_reviews(product_url: str):
+    return scrape_product_reviews(product_url)
 
 @router.get('/get_all_categories')
 async def all_categories():

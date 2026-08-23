@@ -1,9 +1,11 @@
 from neurocom_backend.python.lazop.base import LazopClient, LazopRequest
 import os
+import re
+import requests
 from dotenv import load_dotenv
 from fastapi.responses import JSONResponse
 import json
-from neurocom_backend.models.daraz_model import DarazProductCreate, DarazGetAllProductsResponse, DarazProduct, ReverseOrderInfo
+from neurocom_backend.models.daraz_model import DarazProductCreate, DarazGetAllProductsResponse, DarazProduct, ReverseOrderInfo, ScrapedProductReview, ScrapedProductReviewsResponse
 from neurocom_backend.utils.redis_cache import get_or_refresh, fingerprint
 from typing import Any
 from datetime import datetime, timedelta
@@ -107,8 +109,11 @@ def get_time_range(days=7):
         int(end_time.timestamp() * 1000)
     )
     
-def get_product_reviews(product_id: str, access_token: str):
-    start_time, end_time = get_time_range(days=7)
+def _fetch_product_reviews_raw(product_id: str, access_token: str) -> list:
+    # start_time, end_time = get_time_range(days=9)
+    # print(start_time, end_time)
+    start_time = 1786690800
+    end_time = 1786863600
     product_reviews_request = LazopRequest("/review/seller/history/list",'GET')
     product_reviews_request.add_api_param('item_id', product_id)
     product_reviews_request.add_api_param('start_time', start_time)
@@ -127,7 +132,90 @@ def get_product_reviews(product_id: str, access_token: str):
     reviews_response = lazop_client.execute(reviews_request, access_token)
     print("Reviews response: ",reviews_response.body)
     return reviews_response.body["data"]["review_list"]
-  
+
+def get_product_reviews(product_id: str, access_token: str):
+    cache_key = f"daraz:product_reviews:{product_id}:{fingerprint(access_token)}"
+    return get_or_refresh(
+        cache_key,
+        fetch_raw_fn=lambda: _fetch_product_reviews_raw(product_id, access_token),
+        enable_background_refresh=False,
+    )
+
+# ---------------------------------------------------------------------------
+# Scraping a product's *full* review history from its storefront URL.
+#
+# The seller API used by get_product_reviews only returns reviews within a
+# rolling 7-day window (start_time/end_time on /review/seller/history/list).
+# Daraz's product page itself, however, pulls its review widget from a
+# public, unauthenticated JSON endpoint with no such limit and proper
+# pagination metadata, so we call that directly instead of driving a
+# headless browser: https://my.daraz.pk/pdp/review/getReviewList
+# ---------------------------------------------------------------------------
+
+_DARAZ_REVIEW_LIST_URL = "https://my.daraz.pk/pdp/review/getReviewList"
+_ITEM_ID_RE = re.compile(r"-i(\d+)(?:-s\d+)?\.html")
+
+def _extract_item_id_from_url(product_url: str) -> str:
+    match = _ITEM_ID_RE.search(product_url)
+    if not match:
+        raise ValueError(f"Could not extract item id from Daraz product URL: {product_url}")
+    return match.group(1)
+
+_MAX_REVIEW_PAGES = 200
+
+def _fetch_all_scraped_reviews_raw(item_id: str) -> dict:
+    page_size = 50
+    all_items: list = []
+    ratings: dict = {}
+
+    # Daraz's own `paging.totalPages`/`ratings.reviewCount` count reviews
+    # that never actually come back through pagination (e.g. hidden/pending
+    # ones), so an empty page is the only reliable stop condition here
+    # rather than trusting those totals; the page cap is just a safety net
+    # against an unexpected always-non-empty response.
+    for page_no in range(1, _MAX_REVIEW_PAGES + 1):
+        response = requests.get(
+            _DARAZ_REVIEW_LIST_URL,
+            params={"itemId": item_id, "pageSize": page_size, "filter": 0, "sort": 0, "pageNo": page_no},
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=20,
+        )
+        response.raise_for_status()
+        body = response.json()
+        model = body.get("model") or {}
+        items = model.get("items") or []
+        if not items:
+            break
+        all_items.extend(items)
+        ratings = model.get("ratings") or ratings
+
+    return {
+        "item_id": item_id,
+        "items": all_items,
+        "total_reviews": len(all_items),
+        "average_rating": ratings.get("average"),
+    }
+
+def _clean_scraped_reviews_payload(raw: dict) -> dict:
+    validated = ScrapedProductReviewsResponse.model_validate({
+        "item_id": raw["item_id"],
+        "total_reviews": raw["total_reviews"],
+        "average_rating": raw["average_rating"],
+        "reviews": raw["items"],
+    })
+    return validated.model_dump(mode="json")
+
+def scrape_product_reviews(product_url: str) -> ScrapedProductReviewsResponse:
+    item_id = _extract_item_id_from_url(product_url)
+    cache_key = f"daraz:scraped_reviews:{item_id}"
+    body = get_or_refresh(
+        cache_key,
+        fetch_raw_fn=lambda: _fetch_all_scraped_reviews_raw(item_id),
+        transform_fn=_clean_scraped_reviews_payload,
+        enable_background_refresh=False,
+    )
+    return ScrapedProductReviewsResponse.model_validate(body)
+
 def get_category_attributes(category_id: str):
     request = LazopRequest("/category/attributes/get", "GET")
     request.add_api_param("primary_category_id", category_id)

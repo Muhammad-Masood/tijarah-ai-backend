@@ -13,7 +13,8 @@ from langchain_core.output_parsers import StrOutputParser
 import json
 from dotenv import load_dotenv
 from neurocom_backend.models.review_model import Review, ReviewAnalysisResponse, ChatRequest, ActionItem, AnalysisRequest
-from neurocom_backend.services.reviews_service import analyze_reviews_with_llm
+from neurocom_backend.services.reviews_service import analyze_reviews_with_llm, reviews_from_scraped
+from neurocom_backend.services.daraz_service import scrape_product_reviews
 
 _:bool = load_dotenv()
 
@@ -25,12 +26,17 @@ async def root():
 
 @router.post("/analyze-reviews", response_model=ReviewAnalysisResponse)
 async def analyze_product_reviews(request: AnalysisRequest):
-    if not request.reviews:
-        raise HTTPException(status_code=400, detail="No reviews provided")
+    scraped = scrape_product_reviews(request.product_url)
+    if not scraped.reviews:
+        raise HTTPException(status_code=400, detail="No reviews found for this product")
+
+    reviews = reviews_from_scraped(scraped)
+    if not reviews:
+        raise HTTPException(status_code=400, detail="No usable review content found for this product")
 
     # Run Analysis
-    data, _ = analyze_reviews_with_llm(request.product_name, request.reviews)
-    
+    data = analyze_reviews_with_llm(request.product_name, scraped.item_id, reviews)
+
     if not data:
         raise HTTPException(status_code=500, detail="AI Analysis failed")
 

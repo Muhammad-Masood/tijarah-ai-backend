@@ -229,3 +229,38 @@ class ReverseOrderInfo(BaseModel):
     code: str
     request_id: Optional[str] = None
     trace_id: Optional[str] = Field(default=None, alias="_trace_id_")
+
+
+# ---------------------------------------------------------------------------
+# Shapes returned by the public Daraz PDP review widget API
+# (GET https://my.daraz.pk/pdp/review/getReviewList), used by
+# daraz_service.scrape_product_reviews to get a product's full review
+# history from its storefront URL. The seller API (get_product_reviews)
+# only exposes a rolling 7-day window; this endpoint has no such limit.
+# ---------------------------------------------------------------------------
+
+class ScrapedProductReview(BaseModel):
+    review_id: int = Field(alias="reviewRateId")
+    buyer_name: Optional[str] = Field(default=None, alias="buyerName")
+    rating: int
+    content: Optional[str] = Field(default=None, alias="reviewContent")
+    review_date: Optional[str] = Field(default=None, alias="reviewTime")
+    bought_date: Optional[str] = Field(default=None, alias="boughtDate")
+    like_count: int = Field(default=0, alias="likeCount")
+    images: List[str] = []
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @field_validator("images", mode="before")
+    @classmethod
+    def _extract_image_urls(cls, value: Any) -> List[str]:
+        if not value:
+            return []
+        return [img.get("url") for img in value if isinstance(img, dict) and img.get("url")]
+
+
+class ScrapedProductReviewsResponse(BaseModel):
+    item_id: str
+    total_reviews: int
+    average_rating: Optional[float] = None
+    reviews: List[ScrapedProductReview]

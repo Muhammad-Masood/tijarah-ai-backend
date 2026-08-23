@@ -7,8 +7,9 @@ from fastapi.responses import JSONResponse
 import json
 from neurocom_backend.models.daraz_model import DarazProductCreate, DarazGetAllProductsResponse, DarazProduct, ReverseOrderInfo, ScrapedProductReview, ScrapedProductReviewsResponse
 from neurocom_backend.utils.redis_cache import get_or_refresh, fingerprint
-from typing import Any
+from typing import Any, Optional
 from datetime import datetime, timedelta
+from collections import defaultdict
 import concurrent.futures
 
 _:bool = load_dotenv()
@@ -41,7 +42,7 @@ def _fetch_all_products_raw(access_token: str) -> dict:
     all_products_request = LazopRequest("/products/get",'GET')
     all_products_request.add_api_param("offset", "0")
     all_products_request.add_api_param("limit", "50")
-    all_products_request.add_api_param('filter', 'live')
+    all_products_request.add_api_param('filter', 'all')
     all_products_response = lazop_client.execute(all_products_request, access_token)
     print("Products: ", all_products_response.body)
     body = all_products_response.body
@@ -417,7 +418,7 @@ def create_new_product(access_token: str, product: Any):
 #     return JSONResponse({"type": response.type, "body": response.body})
 
 
-def get_all_orders(access_token: str):
+def get_all_orders(access_token: str, include_canceled: bool = False):
     all_orders_request = LazopRequest("/orders/get",'GET')
     all_orders_request.add_api_param("offset", "0")
     all_orders_request.add_api_param("limit", "10")
@@ -426,7 +427,84 @@ def get_all_orders(access_token: str):
     all_orders_request.add_api_param('created_after', '2017-02-10T09:00:00+08:00')
     all_orders_response = lazop_client.execute(all_orders_request, access_token)
     print("Orders: ", all_orders_response.body)
-    return all_orders_response.body["data"]["orders"]
+    data = all_orders_response.body["data"]
+    if not include_canceled:
+        orders = [o for o in data.get("orders", []) if "canceled" not in o.get("statuses", [])]
+        data = {**data, "orders": orders, "count": len(orders)}
+    return data
+
+# ---------------------------------------------------------------------------
+# get_all_orders only returns a single page (limit=10) — countTotal in that
+# response can be in the thousands, and /orders/get's offset param doesn't
+# reliably support paging deep enough to walk a seller's whole history. So
+# instead of offset, this walks forward through time: page ascending by
+# created_at, then re-issue the request with created_after advanced past
+# the last order in the page, until the running total reaches countTotal.
+# ---------------------------------------------------------------------------
+
+def _advance_created_after(created_at: str) -> str:
+    """Daraz's created_at *response* field looks like
+    '2026-08-20 16:32:40 +0800'; the created_after *request* param instead
+    expects '2026-08-20T16:32:40+08:00' (matches the seed value used by
+    get_all_orders). Bumped by one second so the boundary order — the last
+    one in the page just fetched — isn't re-fetched forever."""
+    dt = datetime.strptime(created_at, "%Y-%m-%d %H:%M:%S %z") + timedelta(seconds=1)
+    iso = dt.strftime("%Y-%m-%dT%H:%M:%S%z")  # e.g. ...+0800
+    return f"{iso[:-2]}:{iso[-2:]}"  # -> ...+08:00
+
+def _fetch_all_orders_raw(access_token: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> list:
+    page_size = 100
+    created_after = f"{start_date}T00:00:00+08:00" if start_date else '2017-02-10T09:00:00+08:00'
+    created_before = f"{end_date}T23:59:59+08:00" if end_date else None
+    all_orders: list = []
+    seen_order_ids: set = set()
+    count_total = None
+
+    while True:
+        request = LazopRequest("/orders/get", 'GET')
+        request.add_api_param("offset", "0")
+        request.add_api_param("limit", str(page_size))
+        request.add_api_param("sort_by", "created_at")
+        request.add_api_param("sort_direction", "ASC")
+        request.add_api_param("created_after", created_after)
+        if created_before:
+            request.add_api_param("created_before", created_before)
+        response = lazop_client.execute(request, access_token)
+        print("Orders page: ", response.body)
+        data = response.body["data"]
+        orders = data.get("orders", [])
+        if count_total is None:
+            count_total = data.get("countTotal", len(orders))
+
+        new_orders = [o for o in orders if o["order_id"] not in seen_order_ids]
+        if not new_orders:
+            break
+        seen_order_ids.update(o["order_id"] for o in new_orders)
+        all_orders.extend(new_orders)
+
+        if len(all_orders) >= count_total:
+            break
+
+        created_after = _advance_created_after(orders[-1]["created_at"])
+
+    return all_orders
+
+def get_all_orders_full(
+    access_token: str,
+    include_canceled: bool = False,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> dict:
+    cache_key = f"daraz:all_orders_full:{fingerprint(access_token)}:{start_date or 'any'}:{end_date or 'any'}"
+    all_orders = get_or_refresh(
+        cache_key,
+        fetch_raw_fn=lambda: _fetch_all_orders_raw(access_token, start_date, end_date),
+        enable_background_refresh=False,
+    )
+    orders = all_orders if include_canceled else [
+        o for o in all_orders if "canceled" not in o.get("statuses", [])
+    ]
+    return {"orders": orders, "count": len(orders)}
 
 def get_order_detail(order_id: str, access_token: str):
     order_detail_request = LazopRequest('/order/items/get','GET')
@@ -443,15 +521,24 @@ def get_orders_details(order_ids: list[str], access_token: str):
   print("Orders details: ", orders_details_response.body)
   return orders_details_response.body["data"]
   
-def get_orders_with_items(access_token: str):
-    orders = get_all_orders(access_token)
-    if(not orders):
-      return []
+_ORDER_DETAILS_BATCH_SIZE = 50
+
+def _fetch_orders_with_items_raw(access_token: str, start_date: Optional[str], end_date: Optional[str]) -> list:
+    orders_res = get_all_orders_full(access_token, start_date=start_date, end_date=end_date)
+    orders = orders_res.get("orders", [])
+    if not orders:
+        return []
     print("Orders: ", orders[0]["order_id"], type(orders[0]["order_id"]))
     order_ids = [int(o["order_id"]) for o in orders]
     print(order_ids)
 
-    details = get_orders_details(order_ids, access_token)
+    # /orders/items/get doesn't document a max batch size; chunk defensively
+    # since get_all_orders_full can return thousands of orders where the old
+    # single-page get_all_orders (limit 10) never could.
+    details: list = []
+    for i in range(0, len(order_ids), _ORDER_DETAILS_BATCH_SIZE):
+        batch = order_ids[i:i + _ORDER_DETAILS_BATCH_SIZE]
+        details.extend(get_orders_details(batch, access_token))
 
     merged_orders = []
     for order in orders:
@@ -466,6 +553,27 @@ def get_orders_with_items(access_token: str):
         })
 
     return merged_orders
+
+def get_orders_with_items(
+    access_token: str,
+    product_sku_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> dict:
+    cache_key = f"daraz:orders_with_items:{fingerprint(access_token)}:{start_date or 'any'}:{end_date or 'any'}"
+    merged_orders = get_or_refresh(
+        cache_key,
+        fetch_raw_fn=lambda: _fetch_orders_with_items_raw(access_token, start_date, end_date),
+        enable_background_refresh=False,
+    )
+
+    if product_sku_id is not None:
+        merged_orders = [
+            order for order in merged_orders
+            if any(str(item.get("sku_id")) == str(product_sku_id) for item in order.get("items", []))
+        ]
+
+    return {"orders": merged_orders, "count": len(merged_orders)}
   
 # def get_order_logistic_details(order_id: str, access_token: str):
 #   order_logistic_request = LazopRequest('/order/logistic/get')
@@ -542,7 +650,12 @@ def trace_order_by_id(order_id: str, access_token: str):
     print("Track Order Data: ", track_order_response.body)
     return track_order_response.body
 
-def get_reverse_orders(access_token: str):
+def _date_to_epoch_millis(date_str: str, end_of_day: bool = False) -> int:
+    time_part = "23:59:59" if end_of_day else "00:00:00"
+    dt = datetime.strptime(f"{date_str} {time_part}", "%Y-%m-%d %H:%M:%S")
+    return int(dt.timestamp() * 1000)
+
+def get_reverse_orders(access_token: str, start_date: Optional[str] = None, end_date: Optional[str] = None):
     page_no = 1
     page_size = 100
     all_items = []
@@ -552,7 +665,10 @@ def get_reverse_orders(access_token: str):
         reverse_orders_request = LazopRequest("/reverse/getreverseordersforseller", 'GET')
         reverse_orders_request.add_api_param('page_no', str(page_no))
         reverse_orders_request.add_api_param('page_size', str(page_size))
-        reverse_orders_request.add_api_param("request_type_list", json.dumps(["RETURN", "ONLY_REFUND"]))
+        if start_date:
+            reverse_orders_request.add_api_param('ReverseOrderLineTimeRangeStart', str(_date_to_epoch_millis(start_date)))
+        if end_date:
+            reverse_orders_request.add_api_param('ReverseOrderLineTimeRangeEnd', str(_date_to_epoch_millis(end_date, end_of_day=True)))
         reverse_orders_response = lazop_client.execute(reverse_orders_request, access_token)
         print("Reverse orders: ", reverse_orders_response.body)
         result = reverse_orders_response.body["result"]
@@ -569,8 +685,17 @@ def get_reverse_order_info(reverse_order_id: str, access_token: str):
     print("Reverse orders info: ", reverse_order_response.body)
     return reverse_order_response.body
 
-def _fetch_all_reverse_orders_info_raw(access_token: str) -> list:
-  reverse_orders = get_reverse_orders(access_token)
+def get_reverse_orders_history(reverse_order_line_id: int, access_token: str):
+    reverse_order_request = LazopRequest("/order/reverse/return/history/list",'GET')
+    reverse_order_request.add_api_param('reverse_order_line_id', str(reverse_order_line_id))
+    reverse_order_request.add_api_param('page_size', '10')
+    reverse_order_request.add_api_param('page_number', '1')
+    reverse_order_response = lazop_client.execute(reverse_order_request, access_token)
+    print("Reverse orders history info: ", reverse_order_response.body)
+    return reverse_order_response.body
+
+def _fetch_all_reverse_orders_info_raw(access_token: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> list:
+  reverse_orders = get_reverse_orders(access_token, start_date, end_date)
   print("reverse orders: ", reverse_orders)
   reverse_orders_info = []
   for reverse_order in reverse_orders:
@@ -587,15 +712,295 @@ def _clean_reverse_orders_info_payload(raw_items: list) -> list:
     for item in raw_items
   ]
 
-def get_all_reverse_orders_info(access_token: str) -> list[ReverseOrderInfo]:
-  cache_key = f"daraz:reverse_orders_info:{fingerprint(access_token)}"
+def _in_product_scope(
+    candidate_product_id: Optional[int],
+    candidate_sku_id: Optional[str],
+    product_id: Optional[int],
+    product_sku_id: Optional[str],
+) -> bool:
+    """Shared scoping rule used to filter both order items and reverse-order
+    lines down to one product/sku. product_sku_id, when given, wins over
+    product_id (it's the more specific filter) rather than requiring both to
+    match — matches how callers actually use these params (pick one)."""
+    if product_id is None and product_sku_id is None:
+        return True
+    if product_sku_id is not None:
+        return candidate_sku_id is not None and str(candidate_sku_id) == str(product_sku_id)
+    return candidate_product_id is not None and candidate_product_id == product_id
+
+def get_all_reverse_orders_info(
+    access_token: str,
+    product_id: Optional[int] = None,
+    product_sku_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> list[ReverseOrderInfo]:
+  # NOTE: product_sku_id is matched against ReverseOrderLine.platform_sku_id.
+  # Daraz's Open Platform docs don't document this endpoint's fields, so
+  # this is inferred from the field name (platform-wide sku id, as opposed
+  # to seller_sku_id which reads as the seller's own SKU code) — worth
+  # confirming against a real response before relying on it.
+  #
+  # start_date/end_date, when given, are sent server-side as
+  # ReverseOrderLineTimeRangeStart/End (epoch millis) on
+  # /reverse/getreverseordersforseller — much cheaper than fetching
+  # everything and filtering client-side. They're part of the cache key
+  # since different ranges are genuinely different datasets.
+  cache_key = f"daraz:reverse_orders_info:{fingerprint(access_token)}:{start_date or 'any'}:{end_date or 'any'}"
   body = get_or_refresh(
     cache_key,
-    fetch_raw_fn=lambda: _fetch_all_reverse_orders_info_raw(access_token),
+    fetch_raw_fn=lambda: _fetch_all_reverse_orders_info_raw(access_token, start_date, end_date),
     transform_fn=_clean_reverse_orders_info_payload,
     enable_background_refresh=False,
   )
-  return [ReverseOrderInfo.model_validate(item) for item in body]
+  all_orders = [ReverseOrderInfo.model_validate(item) for item in body]
+  if product_id is None and product_sku_id is None:
+    return all_orders
+  return [
+    order for order in all_orders
+    if any(
+      _in_product_scope(line.productDTO.product_id, line.productDTO.sku, product_id, product_sku_id)
+      for line in order.data.reverseOrderLineDTOList
+    )
+  ]
+
+# ---------------------------------------------------------------------------
+# Returns / reverse-order intelligence.
+#
+# Return rate needs two independently-fetched datasets joined on the Daraz
+# item id: units *sold* (get_orders_with_items, which merges /orders/get
+# with /orders/items/get) and units *returned* (get_all_reverse_orders_info,
+# /order/reverse/return/detail/list). Order items don't carry a clean
+# item_id field — it's the numeric prefix of shop_sku, e.g.
+# "796269189_PK-3668742984" -> 796269189 — while reverse-order lines do
+# (productDTO.product_id), so that prefix parse plus that field is the join
+# key used throughout below.
+# ---------------------------------------------------------------------------
+
+_RETURN_REASON_HINTS = [
+    (("size", "fit", "small", "large", "tight", "loose"), "Sizing mismatch — double-check size chart accuracy and consider adding a fit guide."),
+    (("not as described", "different", "not match", "not same", "misleading", "not what"), "Listing doesn't match the product received — audit photos and description for accuracy."),
+    (("defect", "damage", "broken", "faulty", "not working", "quality", "poor"), "Quality or packaging issue — review QC and packaging before shipment."),
+    (("wrong item", "wrong product", "incorrect item", "different item"), "Fulfillment error — audit the picking/packing process for mix-ups."),
+    (("late", "delay", "shipping", "delivery"), "Delivery experience issue — review courier performance and SLAs."),
+    (("change of mind", "changed my mind", "no longer", "don't want", "dont want", "don't need", "dont need"), "Buyer's remorse — set clearer expectations pre-purchase to reduce impulse returns."),
+    (("color", "colour"), "Color mismatch — check photo color accuracy across devices/lighting."),
+    (("price", "cheaper", "found cheaper"), "Price sensitivity — monitor competitor pricing on this product."),
+]
+
+def _infer_return_recommendation(reason_text: str) -> str:
+    lowered = (reason_text or "").lower()
+    for keywords, recommendation in _RETURN_REASON_HINTS:
+        if any(kw in lowered for kw in keywords):
+            return recommendation
+    return "Recurring complaint — investigate directly with affected customers to find the root cause."
+
+def _item_id_from_shop_sku(shop_sku: Optional[str]) -> Optional[int]:
+    if not shop_sku:
+        return None
+    prefix = shop_sku.split("_", 1)[0]
+    return int(prefix) if prefix.isdigit() else None
+
+def _epoch_to_datetime(value: Optional[int]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        seconds = value / 1000 if value > 10**12 else value
+        return datetime.fromtimestamp(seconds)
+    except (ValueError, OSError, OverflowError):
+        return None
+
+def _epoch_to_month(value: Optional[int]) -> Optional[str]:
+    dt = _epoch_to_datetime(value)
+    return dt.strftime("%Y-%m") if dt else None
+
+def get_returns_insights(
+    access_token: str,
+    product_id: Optional[int] = None,
+    product_sku_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> dict:
+    # reverse_orders is fetched first (cached, so this doesn't cost an extra
+    # round trip on top of the one below) so a missing start_date can
+    # default to 30 days before the most recent reverse order on file
+    # rather than 30 days before "today" — the two can differ a lot if the
+    # store hasn't had a return in a while.
+    reverse_orders = get_all_reverse_orders_info(access_token, start_date=start_date, end_date=end_date)
+
+    if end_date is None:
+        end_date = datetime.now().date().isoformat()
+    if start_date is None:
+        last_reverse_order = reverse_orders[-1].data.reverseOrderLineDTOList[0].trade_order_gmt_create
+        last_reverse_order_dt = datetime.fromtimestamp(last_reverse_order)
+        start_date = (last_reverse_order_dt - timedelta(days=1)).date().isoformat()
+        print("last_reverse_order: ", start_date)
+
+    print(f"Fetching orders with items for {start_date} to {end_date}...")
+    orders_res = get_orders_with_items(access_token, start_date=start_date, end_date=end_date)
+    print("orders_res: ", orders_res)
+    # --- units sold, within the requested scope ---
+    scoped_units_sold = 0
+    for order in orders_res.get("orders", []):
+        for item in order.get("items", []):
+            item_product_id = _item_id_from_shop_sku(item.get("shop_sku"))
+            if _in_product_scope(item_product_id, item.get("sku_id"), product_id, product_sku_id):
+                scoped_units_sold += 1
+
+    # --- returns: reason/refund/dispute stats within the requested scope ---
+    reason_counter: dict = defaultdict(int)
+    monthly_counter: dict = defaultdict(int)
+    scoped_returns = 0
+    scoped_refund_total = 0.0
+    scoped_dispute_count = 0
+    scoped_refund_request_count = 0
+
+    for order in reverse_orders:
+        for line in order.data.reverseOrderLineDTOList:
+            if not _in_product_scope(line.productDTO.product_id, line.productDTO.sku, product_id, product_sku_id):
+                continue
+
+            scoped_returns += 1
+            # refund_amount is in the smallest currency subunit (paisa);
+            # /100 converts to whole rupees, matching how amounts elsewhere
+            # (e.g. order price) are represented.
+            scoped_refund_total += line.refund_amount / 100
+            if line.is_dispute:
+                scoped_dispute_count += 1
+            if line.is_need_refund:
+                scoped_refund_request_count += 1
+            reason_counter[line.reason_text or "Unspecified"] += 1
+            month = _epoch_to_month(line.return_order_line_gmt_create)
+            if month:
+                monthly_counter[month] += 1
+
+    reason_breakdown = [
+        {
+            "reason": reason,
+            "count": count,
+            "percentage": round(count / scoped_returns * 100, 1) if scoped_returns else 0.0,
+            "likely_cause": _infer_return_recommendation(reason),
+        }
+        for reason, count in sorted(reason_counter.items(), key=lambda kv: kv[1], reverse=True)
+    ]
+
+    monthly_trend = [
+        {"month": month, "returns_count": count}
+        for month, count in sorted(monthly_counter.items())
+    ]
+
+    overall_return_rate = round(scoped_returns / scoped_units_sold * 100, 1) if scoped_units_sold else 0.0
+    dispute_rate = round(scoped_dispute_count / scoped_returns * 100, 1) if scoped_returns else 0.0
+    refund_request_rate = round(scoped_refund_request_count / scoped_returns * 100, 1) if scoped_returns else 0.0
+
+    recommendations = []
+    if overall_return_rate >= 10:
+        recommendations.append(
+            f"Return rate is {overall_return_rate}% — above the ~5-8% norm for most categories; "
+            "the reason breakdown below points at where to start."
+        )
+    if reason_breakdown:
+        top_reason = reason_breakdown[0]
+        recommendations.append(
+            f"Top return reason is '{top_reason['reason']}' ({top_reason['count']} cases, "
+            f"{top_reason['percentage']}%): {top_reason['likely_cause']}"
+        )
+    if dispute_rate >= 20:
+        recommendations.append(
+            f"{dispute_rate}% of returns in scope are disputed — review return-approval "
+            "criteria to reduce buyer friction."
+        )
+
+    return {
+        "scope": "sku" if product_sku_id else ("product" if product_id else "store-wide"),
+        "product_id": product_id,
+        "product_sku_id": product_sku_id,
+        "date_range": {"start_date": start_date, "end_date": end_date},
+        "total_units_sold": scoped_units_sold,
+        "total_units_returned": scoped_returns,
+        "overall_return_rate": overall_return_rate,
+        "total_refund_amount": scoped_refund_total,
+        "dispute_rate": dispute_rate,
+        "refund_request_rate": refund_request_rate,
+        "return_reason_breakdown": reason_breakdown,
+        "monthly_trend": monthly_trend,
+        "recommendations": recommendations,
+    }
+
+def get_returns_dashboard(
+    access_token: str,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    top_n: int = 10,
+) -> dict:
+    """Store-wide return-rate ranking across the whole product catalog
+    (get_all_products, for titles) rather than just the products that show
+    up in a given order/return window — a product with zero sales and zero
+    returns still shows up here, it just won't rank near the top."""
+    reverse_orders = get_all_reverse_orders_info(access_token, start_date=start_date, end_date=end_date)
+
+    if end_date is None:
+        end_date = datetime.now().date().isoformat()
+    if start_date is None:
+        last_reverse_order = reverse_orders[-1].data.reverseOrderLineDTOList[0].trade_order_gmt_create
+        last_reverse_order_dt = datetime.fromtimestamp(last_reverse_order)
+        start_date = (last_reverse_order_dt - timedelta(days=1)).date().isoformat()
+        print("last_reverse_order: ", start_date)
+
+    orders_res = get_orders_with_items(access_token, start_date=start_date, end_date=end_date)
+    all_products = get_all_products(access_token)
+    product_titles = {
+        product.item_id: (product.attributes.name_en or product.attributes.name)
+        for product in all_products.data.products
+    }
+
+    units_sold_by_product: dict = defaultdict(int)
+    for order in orders_res.get("orders", []):
+        for item in order.get("items", []):
+            item_product_id = _item_id_from_shop_sku(item.get("shop_sku"))
+            if item_product_id is not None:
+                units_sold_by_product[item_product_id] += 1
+
+    # Returns are restricted to the same [start_date, end_date] window as
+    # sales here (get_returns_insights doesn't do this — see its own note —
+    # but a return-rate ranking is only meaningful if both sides of the
+    # ratio cover the same period).
+    start_dt = datetime.fromisoformat(start_date)
+    end_dt = datetime.fromisoformat(end_date) + timedelta(days=1)
+    returns_by_product: dict = defaultdict(int)
+    refund_by_product: dict = defaultdict(float)
+    for order in reverse_orders:
+        for line in order.data.reverseOrderLineDTOList:
+            line_dt = _epoch_to_datetime(line.return_order_line_gmt_create)
+            if line_dt is None or not (start_dt <= line_dt < end_dt):
+                continue
+            pid = line.productDTO.product_id
+            returns_by_product[pid] += 1
+            refund_by_product[pid] += line.refund_amount / 100  # paisa -> rupees
+
+    all_product_ids = set(units_sold_by_product) | set(returns_by_product) | set(product_titles)
+    product_stats = []
+    for pid in all_product_ids:
+        sold = units_sold_by_product.get(pid, 0)
+        returned = returns_by_product.get(pid, 0)
+        rate = round(returned / sold * 100, 1) if sold else (100.0 if returned else 0.0)
+        product_stats.append({
+            "product_id": pid,
+            "product_title": product_titles.get(pid),
+            "units_sold": sold,
+            "units_returned": returned,
+            "return_rate": rate,
+            "total_refund_amount": round(refund_by_product.get(pid, 0.0), 2),
+        })
+    product_stats.sort(key=lambda p: (p["return_rate"], p["units_returned"]), reverse=True)
+    # Only rank products with enough sales volume to be a meaningful signal
+    # — one sale that got returned is a 100% rate but not yet a real pattern.
+    ranked_products = [p for p in product_stats if p["units_sold"] >= 3][:top_n]
+
+    return {
+        "date_range": {"start_date": start_date, "end_date": end_date},
+        "top_products_by_return_rate": ranked_products,
+    }
 
 def payout_statement(access_token: str):
   request = LazopRequest('/finance/payout/status/get','GET')

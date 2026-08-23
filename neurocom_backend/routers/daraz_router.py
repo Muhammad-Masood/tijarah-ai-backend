@@ -1,10 +1,10 @@
 from fastapi.middleware.cors import CORSMiddleware
 import requests
 from fastapi import FastAPI, Request, Header, UploadFile, File, Body, APIRouter, Depends, HTTPException, status
-from neurocom_backend.services.daraz_service import lazop_client, get_access_token, get_all_products, get_auth_code, create_new_product, get_category_attributes, migrate_images, get_migrated_images,migrate_image, get_all_categories, get_category_children, get_category_by_id, get_all_orders, trace_order_by_id, get_product_reviews, get_all_reverse_orders_info, get_order_logistic_details, payout_statement, get_orders_with_items, get_all_products_reviews, scrape_product_reviews
+from neurocom_backend.services.daraz_service import lazop_client, get_access_token, get_all_products, get_auth_code, create_new_product, get_category_attributes, migrate_images, get_migrated_images,migrate_image, get_all_categories, get_category_children, get_category_by_id, get_all_orders, get_all_orders_full, trace_order_by_id, get_product_reviews, get_all_reverse_orders_info, get_order_logistic_details, payout_statement, get_orders_with_items, get_all_products_reviews, scrape_product_reviews, get_reverse_orders_history, get_returns_insights, get_returns_dashboard
 from neurocom_backend.utils.security import decrypt_value
 from fastapi.responses import RedirectResponse, JSONResponse
-from neurocom_backend.models.daraz_model import DarazProductCreate, DarazGetAllProductsResponse, ReverseOrderInfo, ScrapedProductReviewsResponse
+from neurocom_backend.models.daraz_model import DarazProductCreate, DarazGetAllProductsResponse, ReverseOrderInfo, ScrapedProductReviewsResponse, OrdersWithItemsResponse, ReturnsInsightsResponse, ReturnsDashboardResponse
 from typing import Annotated, Optional, Any, List
 import os
 from urllib.parse import urlencode
@@ -104,12 +104,26 @@ async def new_product(product:dict = Body(...), access_token: str = Depends(get_
     return create_new_product(access_token, product)
 
 @router.get('/get_all_orders')
-async def all_orders(access_token: str = Depends(get_daraz_access_token)):
-    return get_all_orders(access_token)
+async def all_orders(include_canceled: bool = False, access_token: str = Depends(get_daraz_access_token)):
+    return get_all_orders(access_token, include_canceled)
 
-@router.get('/get_orders_with_items')
-async def orders_with_items(access_token: str = Depends(get_daraz_access_token)):
-    return get_orders_with_items(access_token)
+@router.get('/get_all_orders_full')
+async def all_orders_full(
+    include_canceled: bool = False,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    access_token: str = Depends(get_daraz_access_token),
+):
+    return get_all_orders_full(access_token, include_canceled, start_date, end_date)
+
+@router.get('/get_orders_with_items', response_model=OrdersWithItemsResponse)
+async def orders_with_items(
+    product_sku_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    access_token: str = Depends(get_daraz_access_token),
+):
+    return get_orders_with_items(access_token, product_sku_id, start_date, end_date)
 
 @router.get('/trace_order')
 async def trace_order(order_id: str, access_token: str = Depends(get_daraz_access_token)):
@@ -120,8 +134,37 @@ async def order_logistics_details(order_id: str, access_token: str = Depends(get
     return get_order_logistic_details(order_id, access_token)
 
 @router.get('/get_all_reverse_orders_info', response_model=List[ReverseOrderInfo])
-async def get_reverse_orders_info(access_token: str = Depends(get_daraz_access_token)):
-    return get_all_reverse_orders_info(access_token)
+async def get_reverse_orders_info(
+    product_id: Optional[int] = None,
+    product_sku_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    access_token: str = Depends(get_daraz_access_token),
+):
+    return get_all_reverse_orders_info(access_token, product_id, product_sku_id, start_date, end_date)
+
+@router.get('/get_reverse_order_history', response_model=Any)
+async def get_reverse_order_history(reverse_order_line_id: int, access_token: str = Depends(get_daraz_access_token)):
+    return get_reverse_orders_history(reverse_order_line_id, access_token)
+
+@router.get('/returns_insights', response_model=ReturnsInsightsResponse)
+async def returns_insights(
+    product_id: Optional[int] = None,
+    product_sku_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    access_token: str = Depends(get_daraz_access_token),
+):
+    return get_returns_insights(access_token, product_id, product_sku_id, start_date, end_date)
+
+@router.get('/dashboard_insights', response_model=ReturnsDashboardResponse)
+async def dashboard_insights(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    top_n: int = 10,
+    access_token: str = Depends(get_daraz_access_token),
+):
+    return get_returns_dashboard(access_token, start_date, end_date, top_n)
 
 @router.get('/get_payout')
 async def get_payout(access_token: str = Depends(get_daraz_access_token)):

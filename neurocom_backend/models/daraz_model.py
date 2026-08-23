@@ -264,3 +264,122 @@ class ScrapedProductReviewsResponse(BaseModel):
     total_reviews: int
     average_rating: Optional[float] = None
     reviews: List[ScrapedProductReview]
+
+
+# ---------------------------------------------------------------------------
+# Shapes returned by daraz_service.get_orders_with_items — orders from
+# /orders/get merged with their line items from /orders/items/get. Both
+# endpoints return many more fields than are modeled here (voucher/fee
+# breakdowns, shipping metadata, ...), so extras are kept rather than
+# validated field-by-field.
+# ---------------------------------------------------------------------------
+
+class OrderAddress(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    country: Optional[str] = None
+    city: Optional[str] = None
+    phone: Optional[str] = None
+    address1: Optional[str] = None
+    address2: Optional[str] = None
+    address3: Optional[str] = None
+    address4: Optional[str] = None
+    address5: Optional[str] = None
+    post_code: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+
+
+class OrderItem(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    order_item_id: int
+    order_id: int
+    sku: Optional[str] = None
+    sku_id: Optional[str] = None
+    shop_sku: Optional[str] = None
+    name: Optional[str] = None
+    status: Optional[str] = None
+    item_price: Optional[float] = None
+    paid_price: Optional[float] = None
+    currency: Optional[str] = None
+    product_main_image: Optional[str] = None
+    tracking_code: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class OrderWithItems(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    order_id: int
+    order_number: Optional[int] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    price: Optional[str] = None
+    payment_method: Optional[str] = None
+    items_count: Optional[int] = None
+    statuses: List[str] = []
+    address_billing: Optional[OrderAddress] = None
+    address_shipping: Optional[OrderAddress] = None
+    items: List[OrderItem] = []
+
+
+class OrdersWithItemsResponse(BaseModel):
+    orders: List[OrderWithItems]
+    count: int
+
+
+# ---------------------------------------------------------------------------
+# daraz_service.get_returns_insights — return-rate / complaint-pattern
+# analytics built by joining get_orders_with_items (units sold) against
+# get_all_reverse_orders_info (units returned).
+# ---------------------------------------------------------------------------
+
+class ReturnReasonBreakdown(BaseModel):
+    reason: str
+    count: int
+    percentage: float
+    likely_cause: str
+
+
+class ProductReturnStats(BaseModel):
+    product_id: int
+    product_title: Optional[str] = None
+    units_sold: int
+    units_returned: int
+    return_rate: float
+    total_refund_amount: float
+
+
+class ReturnsMonthlyTrend(BaseModel):
+    month: str
+    returns_count: int
+
+
+class ReturnsDateRange(BaseModel):
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+
+
+class ReturnsInsightsResponse(BaseModel):
+    scope: str  # "store-wide" | "product" | "sku"
+    product_id: Optional[int] = None
+    product_sku_id: Optional[str] = None
+    date_range: ReturnsDateRange
+
+    total_units_sold: int
+    total_units_returned: int
+    overall_return_rate: float
+    total_refund_amount: float
+    dispute_rate: float
+    refund_request_rate: float
+
+    return_reason_breakdown: List[ReturnReasonBreakdown]
+    monthly_trend: List[ReturnsMonthlyTrend]
+    recommendations: List[str]
+
+
+class ReturnsDashboardResponse(BaseModel):
+    date_range: ReturnsDateRange
+    top_products_by_return_rate: List[ProductReturnStats]

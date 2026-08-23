@@ -26,7 +26,10 @@ async def root():
 
 @router.post("/analyze-reviews", response_model=ReviewAnalysisResponse)
 async def analyze_product_reviews(request: AnalysisRequest):
-    scraped = scrape_product_reviews(request.product_url)
+    try:
+        scraped = scrape_product_reviews(request.product_url)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if not scraped.reviews:
         raise HTTPException(status_code=400, detail="No reviews found for this product")
 

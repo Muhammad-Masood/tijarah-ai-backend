@@ -154,7 +154,7 @@ def get_product_reviews(product_id: str, access_token: str):
 # ---------------------------------------------------------------------------
 
 _DARAZ_REVIEW_LIST_URL = "https://my.daraz.pk/pdp/review/getReviewList"
-_ITEM_ID_RE = re.compile(r"-i(\d+)(?:-s\d+)?\.html")
+_ITEM_ID_RE = re.compile(r"[/-]i(\d+)(?:-s\d+)?\.html")
 
 def _extract_item_id_from_url(product_url: str) -> str:
     match = _ITEM_ID_RE.search(product_url)

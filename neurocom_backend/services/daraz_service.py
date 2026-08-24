@@ -5,7 +5,7 @@ import requests
 from dotenv import load_dotenv
 from fastapi.responses import JSONResponse
 import json
-from neurocom_backend.models.daraz_model import DarazProductCreate, DarazGetAllProductsResponse, DarazProduct, ReverseOrderInfo, ScrapedProductReview, ScrapedProductReviewsResponse
+from neurocom_backend.models.daraz_model import DarazGetProductResponse, DarazProductCreate, DarazGetAllProductsResponse, DarazProduct, ReverseOrderInfo, ScrapedProductReview, ScrapedProductReviewsResponse
 from neurocom_backend.utils.redis_cache import get_or_refresh, fingerprint
 from typing import Any, Optional
 from datetime import datetime, timedelta
@@ -52,6 +52,18 @@ def _fetch_all_products_raw(access_token: str) -> dict:
         body.pop(key, None)
     return body
 
+def _fetch_product_by_id_raw(product_id: int, access_token: str) -> dict:
+    product_request = LazopRequest("/products/item/get",'GET')
+    product_request.add_api_param("item_id", str(product_id))
+    product_response = lazop_client.execute(product_request, access_token)
+    print("Products: ", product_response.body)
+    body = product_response.body
+    if isinstance(body, str):
+        body = json.loads(body)
+    for key in _VOLATILE_ENVELOPE_KEYS:
+        body.pop(key, None)
+    return body
+
 def _clean_all_products_payload(raw_body: dict) -> dict:
     """Expensive step (BeautifulSoup HTML->text cleanup + full model
     validation). Only called when the raw payload's hash has actually
@@ -68,6 +80,10 @@ def get_all_products(access_token: str) -> DarazGetAllProductsResponse:
         transform_fn=_clean_all_products_payload,
     )
     return DarazGetAllProductsResponse.model_validate(body)
+
+def get_product_by_id(product_id: int, access_token: str) -> DarazGetProductResponse:
+    body = _fetch_product_by_id_raw(product_id, access_token)
+    return DarazGetProductResponse.model_validate(body)
 
 def get_all_products_reviews(access_token: str):
     all_products = get_all_products(access_token)
@@ -814,19 +830,16 @@ def _epoch_to_month(value: Optional[int]) -> Optional[str]:
     dt = _epoch_to_datetime(value)
     return dt.strftime("%Y-%m") if dt else None
 
-def get_returns_insights(
+def get_returns_insights_stream(
     access_token: str,
     product_id: Optional[int] = None,
     product_sku_id: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-) -> dict:
-    # reverse_orders is fetched first (cached, so this doesn't cost an extra
-    # round trip on top of the one below) so a missing start_date can
-    # default to 30 days before the most recent reverse order on file
-    # rather than 30 days before "today" — the two can differ a lot if the
-    # store hasn't had a return in a while.
+):
+    yield "progress", {"stage": "fetching_returns"}
     reverse_orders = get_all_reverse_orders_info(access_token, start_date=start_date, end_date=end_date)
+    yield "progress", {"stage": "fetched_returns", "count": len(reverse_orders)}
 
     if end_date is None:
         end_date = datetime.now().date().isoformat()
@@ -837,8 +850,10 @@ def get_returns_insights(
         print("last_reverse_order: ", start_date)
 
     print(f"Fetching orders with items for {start_date} to {end_date}...")
+    yield "progress", {"stage": "fetching_orders"}
     orders_res = get_orders_with_items(access_token, start_date=start_date, end_date=end_date)
     print("orders_res: ", orders_res)
+    yield "progress", {"stage": "fetched_orders", "count": orders_res.get("count", 0)}
     # --- units sold, within the requested scope ---
     scoped_units_sold = 0
     for order in orders_res.get("orders", []):
@@ -911,7 +926,7 @@ def get_returns_insights(
             "criteria to reduce buyer friction."
         )
 
-    return {
+    yield "complete", {
         "scope": "sku" if product_sku_id else ("product" if product_id else "store-wide"),
         "product_id": product_id,
         "product_sku_id": product_sku_id,
@@ -926,6 +941,23 @@ def get_returns_insights(
         "monthly_trend": monthly_trend,
         "recommendations": recommendations,
     }
+
+
+def get_returns_insights(
+    access_token: str,
+    product_id: Optional[int] = None,
+    product_sku_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> dict:
+    """Non-streaming entry point — drains get_returns_insights_stream and
+    returns only its final result (this is the single computation path;
+    the two never drift)."""
+    result = None
+    for event, data in get_returns_insights_stream(access_token, product_id, product_sku_id, start_date, end_date):
+        if event == "complete":
+            result = data
+    return result
 
 def get_returns_dashboard(
     access_token: str,

@@ -167,6 +167,12 @@ class DarazGetAllProductsResponse(BaseModel):
     code: str
     request_id: Optional[str] = None
 
+class DarazGetProductResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    data: DarazProduct
+    code: str
+    request_id: Optional[str] = None
+
 
 # ---------------------------------------------------------------------------
 # Shapes returned by GET /order/reverse/return/detail/list

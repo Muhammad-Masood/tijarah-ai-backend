@@ -107,7 +107,7 @@ def compute_sentiment_score(reviews: List[Review]) -> int:
     if not reviews:
         return 0
     avg_rating = sum(r.rating for r in reviews) / len(reviews)
-    return round((avg_rating - 1) / 4 * 100)  # maps 1-5 stars -> 0-100
+    return round((avg_rating - 1) / 4 * 100)
 
 
 def rating_trend(reviews: List[Review]) -> dict:
@@ -233,37 +233,53 @@ def synthesize_final_analysis(
 # Orchestration
 # ---------------------------------------------------------------------------
 
-def analyze_reviews_with_llm(product_name: str, product_id: str, reviews: List[Review]) -> Optional[dict]:
+def analyze_reviews_with_llm_stream(product_name: str, product_id: str, reviews: List[Review]):
+    """Same pipeline as analyze_reviews_with_llm, yielding (event, data) pairs
+    as each stage finishes instead of returning one dict at the end — lets a
+    streaming caller (SSE) render partial results (score, then each topic
+    cluster) instead of waiting for the full map-reduce pass. The final
+    `complete` event carries the same shape analyze_reviews_with_llm returns."""
     if not reviews:
-        return None
+        return
 
     embeddings_model = OpenAIEmbeddings()
     llm = ChatOpenAI(temperature=0, model="gpt-4o")
 
-    # 1. Deterministic quant signal — cheap, instant, ground-truth accurate.
     sentiment_score = compute_sentiment_score(reviews)
     trend = rating_trend(reviews)
+    print("rating_trend: ", trend)
+    yield "score", {"sentiment_score": sentiment_score, "rating_trend": trend}
 
-    # 2. Dedupe before spending any LLM tokens.
     clean_reviews = dedupe_reviews(reviews, embeddings_model)
+    yield "progress", {"stage": "deduped", "review_count": len(clean_reviews)}
 
-    # 3. Cluster at full scale (works the same whether this is 100 or 10,000
-    #    reviews — clustering cost is linear/embeddings-bound, not
-    #    context-window-bound).
     clusters = cluster_reviews(clean_reviews, embeddings_model)
     cluster_sizes = {label: len(revs) for label, revs in clusters.items()}
+    yield "progress", {"stage": "clustered", "cluster_count": len(clusters)}
 
-    # 4. Map: one bounded LLM call per cluster (parallelizable). Keyed by the
-    #    same cluster label as cluster_sizes so the two stay matched up —
-    #    KMeans labels aren't guaranteed contiguous/ordered, so a positional
-    #    index here would silently pair each summary with the wrong size.
-    cluster_summaries = {label: summarize_cluster(revs, llm) for label, revs in clusters.items()}
+    # 4. Map: one bounded LLM call per cluster. Keyed by the same cluster
+    #    label as cluster_sizes so the two stay matched up — KMeans labels
+    #    aren't guaranteed contiguous/ordered, so a positional index here
+    #    would silently pair each summary with the wrong size. Each summary
+    #    is yielded as it completes rather than gathered up front, so topics
+    #    appear on the UI one at a time instead of all at once at the end.
+    cluster_summaries = {}
+    for label, revs in clusters.items():
+        cs = summarize_cluster(revs, llm)
+        cluster_summaries[label] = cs
+        yield "cluster", {
+            "label": str(label),
+            "size": cluster_sizes[label],
+            "topic_label": cs.topic_label,
+            "sentiment": cs.sentiment,
+            "key_points": cs.key_points,
+        }
 
     # 5. Reduce: one final synthesis call over compact cluster summaries,
     #    never over raw review text.
     final = synthesize_final_analysis(product_name, cluster_summaries, cluster_sizes, llm)
 
-    return {
+    yield "complete", {
         "sentiment_score": sentiment_score,   # from real ratings, not LLM guess
         "rating_trend": trend,                # catches emerging issues over time
         "summary": final.summary,
@@ -274,3 +290,14 @@ def analyze_reviews_with_llm(product_name: str, product_id: str, reviews: List[R
             for label, cs in cluster_summaries.items()
         },
     }
+
+
+def analyze_reviews_with_llm(product_name: str, product_id: str, reviews: List[Review]) -> Optional[dict]:
+    """Non-streaming entry point — drains analyze_reviews_with_llm_stream and
+    returns only its final result, for callers that just want the finished
+    report (this is the single orchestration path; the two never drift)."""
+    result = None
+    for event, data in analyze_reviews_with_llm_stream(product_name, product_id, reviews):
+        if event == "complete":
+            result = data
+    return result

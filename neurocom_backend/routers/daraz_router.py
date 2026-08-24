@@ -1,10 +1,11 @@
 from fastapi.middleware.cors import CORSMiddleware
 import requests
 from fastapi import FastAPI, Request, Header, UploadFile, File, Body, APIRouter, Depends, HTTPException, status
-from neurocom_backend.services.daraz_service import lazop_client, get_access_token, get_all_products, get_auth_code, create_new_product, get_category_attributes, migrate_images, get_migrated_images,migrate_image, get_all_categories, get_category_children, get_category_by_id, get_all_orders, get_all_orders_full, trace_order_by_id, get_product_reviews, get_all_reverse_orders_info, get_order_logistic_details, payout_statement, get_orders_with_items, get_all_products_reviews, scrape_product_reviews, get_reverse_orders_history, get_returns_insights, get_returns_dashboard
+from neurocom_backend.services.daraz_service import lazop_client, get_access_token, get_all_products, get_auth_code, create_new_product, get_category_attributes, migrate_images, get_migrated_images,migrate_image, get_all_categories, get_category_children, get_category_by_id, get_all_orders, get_all_orders_full, trace_order_by_id, get_product_reviews, get_all_reverse_orders_info, get_order_logistic_details, payout_statement, get_orders_with_items, get_all_products_reviews, scrape_product_reviews, get_reverse_orders_history, get_returns_insights, get_returns_insights_stream, get_returns_dashboard, get_product_by_id
 from neurocom_backend.utils.security import decrypt_value
-from fastapi.responses import RedirectResponse, JSONResponse
-from neurocom_backend.models.daraz_model import DarazProductCreate, DarazGetAllProductsResponse, ReverseOrderInfo, ScrapedProductReviewsResponse, OrdersWithItemsResponse, ReturnsInsightsResponse, ReturnsDashboardResponse
+from neurocom_backend.utils.sse import sse_stream
+from fastapi.responses import RedirectResponse, JSONResponse, StreamingResponse
+from neurocom_backend.models.daraz_model import DarazProductCreate, DarazGetAllProductsResponse, ReverseOrderInfo, ScrapedProductReviewsResponse, OrdersWithItemsResponse, ReturnsInsightsResponse, ReturnsDashboardResponse, DarazGetProductResponse
 from typing import Annotated, Optional, Any, List
 import os
 from urllib.parse import urlencode
@@ -58,6 +59,10 @@ async def access_token(code: str):
 @router.get('/get_all_products', response_model=DarazGetAllProductsResponse)
 def all_products(access_token: str = Depends(get_daraz_access_token)) -> DarazGetAllProductsResponse:
     return get_all_products(access_token)
+
+@router.get('/get_product_by_id', response_model=DarazGetProductResponse)
+def product_by_id(product_id: int, access_token: str = Depends(get_daraz_access_token)) -> DarazGetAllProductsResponse:
+    return get_product_by_id(product_id, access_token)
 
 @router.get('/get_all_product_reviews')
 def all_products_reviews( access_token: str = Depends(get_daraz_access_token)):
@@ -153,8 +158,14 @@ async def returns_insights(
     product_sku_id: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    stream: bool = False,
     access_token: str = Depends(get_daraz_access_token),
 ):
+    if stream:
+        return StreamingResponse(
+            sse_stream(get_returns_insights_stream(access_token, product_id, product_sku_id, start_date, end_date)),
+            media_type="text/event-stream",
+        )
     return get_returns_insights(access_token, product_id, product_sku_id, start_date, end_date)
 
 @router.get('/dashboard_insights', response_model=ReturnsDashboardResponse)

@@ -10,6 +10,7 @@ class Review(BaseModel):
 class AnalysisRequest(BaseModel):
     product_url: str
     product_name: str
+    stream: bool = False
 
 class ActionItem(BaseModel):
     issue: str

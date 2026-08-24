@@ -1,5 +1,6 @@
 import os
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
@@ -13,8 +14,9 @@ from langchain_core.output_parsers import StrOutputParser
 import json
 from dotenv import load_dotenv
 from neurocom_backend.models.review_model import Review, ReviewAnalysisResponse, ChatRequest, ActionItem, AnalysisRequest
-from neurocom_backend.services.reviews_service import analyze_reviews_with_llm, reviews_from_scraped
+from neurocom_backend.services.reviews_service import analyze_reviews_with_llm, analyze_reviews_with_llm_stream, reviews_from_scraped
 from neurocom_backend.services.daraz_service import scrape_product_reviews
+from neurocom_backend.utils.sse import sse_stream
 
 _:bool = load_dotenv()
 
@@ -36,6 +38,12 @@ async def analyze_product_reviews(request: AnalysisRequest):
     reviews = reviews_from_scraped(scraped)
     if not reviews:
         raise HTTPException(status_code=400, detail="No usable review content found for this product")
+
+    if request.stream:
+        return StreamingResponse(
+            sse_stream(analyze_reviews_with_llm_stream(request.product_name, scraped.item_id, reviews)),
+            media_type="text/event-stream",
+        )
 
     # Run Analysis
     data = analyze_reviews_with_llm(request.product_name, scraped.item_id, reviews)

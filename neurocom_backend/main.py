@@ -80,8 +80,8 @@ def read_root():
 require_auth = [Depends(get_current_user)]
 
 app.include_router(auth_router.router)
-app.include_router(order_router.router, dependencies=require_auth)
-app.include_router(product_router.router, dependencies=require_auth)
+# app.include_router(order_router.router, dependencies=require_auth)
+# app.include_router(product_router.router, dependencies=require_auth)
 app.include_router(customer_support_router.router, dependencies=require_auth)
 app.include_router(daraz_router.router, dependencies=require_auth)
 app.include_router(forecast_router.router, dependencies=require_auth)

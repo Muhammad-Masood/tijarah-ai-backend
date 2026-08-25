@@ -310,9 +310,25 @@ class OrderItem(BaseModel):
     paid_price: Optional[float] = None
     currency: Optional[str] = None
     product_main_image: Optional[str] = None
+    product_detail_url: Optional[str] = None
     tracking_code: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+    variation: Optional[str] = None
+    reason: Optional[str] = None
+    reason_detail: Optional[str] = None
+    return_status: Optional[str] = None
+    cancel_return_initiator: Optional[str] = None
+    shipment_provider: Optional[str] = None
+    shipping_type: Optional[str] = None
+    warehouse_code: Optional[str] = None
+    voucher_amount: Optional[float] = None
+    shipping_amount: Optional[float] = None
+    shipping_fee_original: Optional[float] = None
+    tax_amount: Optional[float] = None
+    payment_time: Optional[int] = None
+    package_id: Optional[str] = None
+    buyer_id: Optional[int] = None
 
 
 class OrderWithItems(BaseModel):
@@ -329,6 +345,15 @@ class OrderWithItems(BaseModel):
     address_billing: Optional[OrderAddress] = None
     address_shipping: Optional[OrderAddress] = None
     items: List[OrderItem] = []
+    warehouse_code: Optional[str] = None
+    voucher: Optional[float] = None
+    cash_payment_fee: Optional[float] = None
+    shipping_fee: Optional[float] = None
+    shipping_fee_original: Optional[float] = None
+    customer_first_name: Optional[str] = None
+    customer_last_name: Optional[str] = None
+    buyer_note: Optional[str] = None
+    remarks: Optional[str] = None
 
 
 class OrdersWithItemsResponse(BaseModel):

@@ -53,7 +53,7 @@ def _fetch_all_products_raw(access_token: str) -> dict:
     return body
 
 def _fetch_product_by_id_raw(product_id: int, access_token: str) -> dict:
-    product_request = LazopRequest("/products/item/get",'GET')
+    product_request = LazopRequest("/product/item/get",'GET')
     product_request.add_api_param("item_id", str(product_id))
     product_response = lazop_client.execute(product_request, access_token)
     print("Products: ", product_response.body)
@@ -536,7 +536,26 @@ def get_orders_details(order_ids: list[str], access_token: str):
   orders_details_response = lazop_client.execute(orders_details_request, access_token)
   print("Orders details: ", orders_details_response.body)
   return orders_details_response.body["data"]
-  
+
+def get_order_by_id(order_id: str, access_token: str) -> dict:
+    """Single-order counterpart to get_orders_with_items: /order/get for the
+    order header, merged with its line items from get_orders_details (the
+    same /orders/items/get batch endpoint used everywhere else in this
+    file, just called with a single order_id)."""
+    order_request = LazopRequest('/order/get', 'GET')
+    order_request.add_api_param('order_id', order_id)
+    order_response = lazop_client.execute(order_request, access_token)
+    print("Order: ", order_response.body)
+    order = order_response.body["data"]
+
+    numeric_order_id = order["order_id"]
+    details = get_orders_details([numeric_order_id], access_token)
+    order_items = next(
+        (d["order_items"] for d in details if d["order_id"] == numeric_order_id),
+        []
+    )
+    return {**order, "items": order_items}
+
 _ORDER_DETAILS_BATCH_SIZE = 50
 
 def _fetch_orders_with_items_raw(access_token: str, start_date: Optional[str], end_date: Optional[str]) -> list:
@@ -751,17 +770,6 @@ def get_all_reverse_orders_info(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
 ) -> list[ReverseOrderInfo]:
-  # NOTE: product_sku_id is matched against ReverseOrderLine.platform_sku_id.
-  # Daraz's Open Platform docs don't document this endpoint's fields, so
-  # this is inferred from the field name (platform-wide sku id, as opposed
-  # to seller_sku_id which reads as the seller's own SKU code) — worth
-  # confirming against a real response before relying on it.
-  #
-  # start_date/end_date, when given, are sent server-side as
-  # ReverseOrderLineTimeRangeStart/End (epoch millis) on
-  # /reverse/getreverseordersforseller — much cheaper than fetching
-  # everything and filtering client-side. They're part of the cache key
-  # since different ranges are genuinely different datasets.
   cache_key = f"daraz:reverse_orders_info:{fingerprint(access_token)}:{start_date or 'any'}:{end_date or 'any'}"
   body = get_or_refresh(
     cache_key,

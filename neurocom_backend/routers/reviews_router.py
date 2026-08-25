@@ -1,21 +1,13 @@
-import os
-from fastapi import APIRouter, HTTPException
+import uuid
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-from typing import List
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_community.vectorstores import Chroma
-from langchain_core.documents import Document
-# from langchain_classic.chains import retrieval_qa
-# from langchain.chains import RetrievalQA
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-# from langchain_core.prompts import PromptTemplate
-import json
+from typing import Optional
 from dotenv import load_dotenv
-from neurocom_backend.models.review_model import Review, ReviewAnalysisResponse, ChatRequest, ActionItem, AnalysisRequest
+from neurocom_backend.models.review_model import ReviewAnalysisResponse, AnalysisRequest
 from neurocom_backend.services.reviews_service import analyze_reviews_with_llm, analyze_reviews_with_llm_stream, reviews_from_scraped
 from neurocom_backend.services.daraz_service import scrape_product_reviews
+from neurocom_backend.services.product_chat_service import build_product_chat_agent, stream_product_chat_response
+from neurocom_backend.routers.daraz_router import get_daraz_access_token
 from neurocom_backend.utils.sse import sse_stream
 
 _:bool = load_dotenv()
@@ -53,40 +45,43 @@ async def analyze_product_reviews(request: AnalysisRequest):
 
     return data
 
-@router.post("/chat-with-reviews")
-async def chat_with_reviews(request: ChatRequest):
+@router.websocket("/product_chat")
+async def product_chat(
+    websocket: WebSocket,
+    product_id: int,
+    product_sku_id: Optional[str] = None,
+    access_token: str = Depends(get_daraz_access_token),
+):
     """
-    This endpoint demonstrates RAG. 
-    The user asks "Why is shipping bad?" and we retrieve relevant docs.
+    Chat about ONE product's reviews/ratings, catalog details, and orders
+    (especially returns). product_id/product_sku_id scope the whole session
+    — the client sends only {"message": "..."} per turn.
+
+    One agent (and its LangGraph MemorySaver thread) per connection, so
+    multi-turn context works within a session; it's gone once the socket
+    closes, and isn't shared across worker processes — see
+    product_chat_service's module docstring for the production caveat.
     """
-    # 1. Re-create vector store (In prod, load existing store)
-    documents = [Document(page_content=r.text) for r in request.reviews]
-    embeddings = OpenAIEmbeddings()
-    vectorstore = Chroma.from_documents(documents, embeddings)
-    
-    # 2. Setup Retrieval Chain
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 5}) # Get top 5 relevant reviews
-    llm = ChatOpenAI(temperature=0)
-    prompt = ChatPromptTemplate.from_template(
-        """You are analyzing product reviews.
-        Use the following reviews to answer the question.
+    await websocket.accept()
+    agent = build_product_chat_agent(access_token, product_id, product_sku_id)
+    thread_id = str(uuid.uuid4())
 
-        Reviews:
-        {context}
+    try:
+        while True:
+            try:
+                payload = await websocket.receive_json()
+            except (WebSocketDisconnect, RuntimeError):
+                raise
+            except Exception:
+                await websocket.send_json({"event": "error", "data": {"detail": "Message must be valid JSON with a 'message' field."}})
+                continue
 
-        Question:
-        {question}
-        """
-    )
+            message = (payload or {}).get("message", "").strip()
+            if not message:
+                await websocket.send_json({"event": "error", "data": {"detail": "Missing 'message' field."}})
+                continue
 
-    chain = (
-        {
-            "context": retriever,
-            "question": lambda x: x
-        }
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
-    answer = chain.invoke(request.query)
-    return {"answer": answer}
+            async for event, data in stream_product_chat_response(agent, thread_id, message):
+                await websocket.send_json({"event": event, "data": data})
+    except WebSocketDisconnect:
+        pass

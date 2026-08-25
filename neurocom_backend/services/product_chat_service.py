@@ -98,6 +98,19 @@ def _format_return_record(order: ReverseOrderInfo) -> dict:
     }
 
 
+def _format_address(address: Optional[dict]) -> Optional[dict]:
+    if not address:
+        return None
+    name = f"{address.get('first_name', '')} {address.get('last_name', '')}".strip()
+    return {
+        "name": name or None,
+        "phone": address.get("phone") or None,
+        "city": address.get("city") or None,
+        "address": address.get("address1") or None,
+        "country": address.get("country") or None,
+    }
+
+
 def _format_order_summary(order: dict) -> dict:
     return {
         "order_id": order.get("order_id"),
@@ -105,6 +118,13 @@ def _format_order_summary(order: dict) -> dict:
         "statuses": order.get("statuses"),
         "price": order.get("price"),
         "payment_method": order.get("payment_method"),
+        "customer": {
+            "first_name": order.get("customer_first_name") or None,
+            "last_name": order.get("customer_last_name") or None,
+        },
+        "shipping_address": _format_address(order.get("address_shipping")),
+        "billing_address": _format_address(order.get("address_billing")),
+        "buyer_note": order.get("buyer_note") or None,
         "items": [
             {
                 "name": item.get("name"),
@@ -167,8 +187,8 @@ def build_product_chat_tools(access_token: str, product_id: int, product_sku_id:
 
     @tool
     def get_order_details(order_id: str) -> dict:
-        """Get a specific order's details and line items by order id — e.g. the
-        trade_order_id returned by get_product_returns."""
+        """Get a specific order's details, customer/shipping info, and line items
+        by order id — e.g. the trade_order_id returned by get_product_returns."""
         try:
             order = get_order_by_id(order_id, access_token)
             return _format_order_summary(order)
@@ -184,8 +204,10 @@ _SYSTEM_PROMPT = (
     "or sku id. Answer questions about its reviews/ratings, catalog details, and orders, "
     "especially returns: when asked about returns, call get_product_returns first, then use "
     "the trade_order_id on any record of interest with get_order_details to see what was "
-    "originally ordered. Cite concrete numbers from the tools rather than guessing, and say "
-    "plainly when the data available doesn't answer the question."
+    "originally ordered. Order details include customer name, phone, and shipping/billing "
+    "addresses — use them when the merchant asks about the buyer. Cite concrete numbers from "
+    "the tools rather than guessing, and say plainly when the data available doesn't answer "
+    "the question."
 )
 
 

@@ -20,3 +20,6 @@ REDIS_USERNAME = os.getenv("REDIS_USERNAME") or None
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD") or None
 REDIS_SSL = os.getenv("REDIS_SSL", "false").strip().lower() in ("1", "true", "yes")
 DARAZ_CACHE_TTL_SECONDS = int(os.getenv("DARAZ_CACHE_TTL_SECONDS", str(24 * 60 * 60)))
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY", "")
+SUPABASE_PRODUCT_BUCKET = os.getenv("SUPABASE_PRODUCT_BUCKET", "product-images")

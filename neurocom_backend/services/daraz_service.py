@@ -3,8 +3,9 @@ import os
 import re
 import requests
 from dotenv import load_dotenv
-from fastapi.responses import JSONResponse
+from fastapi import HTTPException
 import json
+from xml.sax.saxutils import escape
 from neurocom_backend.models.daraz_model import DarazGetProductResponse, DarazProductCreate, DarazGetAllProductsResponse, DarazProduct, ReverseOrderInfo, ScrapedProductReview, ScrapedProductReviewsResponse
 from neurocom_backend.utils.redis_cache import get_or_refresh, fingerprint
 from typing import Any, Optional
@@ -338,27 +339,48 @@ def get_migrated_images(access_token: str, batch_id: str):
     return json.loads(response.body)
   
 def create_new_product(access_token: str, product: Any):
-  print(product)
   create_product_request = LazopRequest('/product/create')
+  product_attributes = {
+        "name": str(product["Title"]),
+        "short_description": str(product["Attributes"].get("short_description") or product["Skus"][0]["package_content"]),
+        "description": str(product["Attributes"].get("description") or product["Skus"][0]["package_content"]),
+        "warranty_type": str(product["Attributes"].get("warranty_type") or "No Warranty"),
+        "brand": str(product["Attributes"].get("brand") or "No Brand"),
+        **product["Attributes"],
+  }
   attributes_xml = "".join([
-        f"<{attr_name}>{attr_value}</{attr_name}>" for attr_name, attr_value in product["Attributes"].items() if attr_value is not None and attr_value != ""
+        f"<{attr_name}>{escape(str(attr_value))}</{attr_name}>"
+        for attr_name, attr_value in product_attributes.items()
+        if attr_value is not None and attr_value != "" and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", attr_name)
   ])
-  images_xml = "".join([f"<Image>{img}</Image>" for img in product["Images"]])
+  images_xml = "".join([f"<Image>{escape(str(img))}</Image>" for img in product["Images"]])
   skus_xml = ""
   for sku in product["Skus"]:
     sku_images_xml = "".join([f"<Image>{img}</Image>" for img in sku.get("Images", [])])
+    sale_props = {
+        name: value
+        for name, value in {
+            "color_family": sku.get("color_family"),
+            "size": sku.get("size"),
+        }.items()
+        if value not in (None, "", "default")
+    }
+    sale_props_xml = ""
+    if sale_props:
+        sale_props_xml = "<saleProp>" + "".join(
+            f"<{name}>{escape(str(value))}</{name}>" for name, value in sale_props.items()
+        ) + "</saleProp>"
     skus_xml += f"""
         <Sku>
-            <SellerSku>{sku['SellerSku']}</SellerSku>
-            <color_family>{sku.get("color_family", "")}</color_family>
-            <size>{sku.get("size", "")}</size>
+            <SellerSku>{escape(str(sku['SellerSku']))}</SellerSku>
+            {sale_props_xml}
             <quantity>{sku['quantity']}</quantity>
             <price>{sku['price']}</price>
             <package_length>{sku['package_length']}</package_length>
             <package_height>{sku['package_height']}</package_height>
             <package_weight>{sku['package_weight']}</package_weight>
             <package_width>{sku['package_width']}</package_width>
-            <package_content>{sku['package_content']}</package_content>
+            <package_content>{escape(str(sku['package_content']))}</package_content>
             <Images>{sku_images_xml}</Images>
         </Sku>
         """
@@ -374,10 +396,14 @@ def create_new_product(access_token: str, product: Any):
       </Product>
     </Request>"""
     
-  print("Final XML Payload: ", xml_payload)
   create_product_request.add_api_param('payload', xml_payload)
   response = lazop_client.execute(create_product_request, access_token)
-  return JSONResponse({"type": response.type, "body": response.body})
+  if isinstance(response.body, dict):
+      return response.body
+  try:
+      return json.loads(response.body)
+  except (TypeError, json.JSONDecodeError) as exc:
+      raise HTTPException(status_code=502, detail="Daraz returned an invalid product creation response") from exc
   
     #  <Image>https://static-01.daraz.pk/p/97545b9b42e3a4781ff7c98c68002352.png</Image>
     #           <Image>https://static-01.daraz.pk/p/97545b9b42e3a4781ff7c98c68002352.png</Image>

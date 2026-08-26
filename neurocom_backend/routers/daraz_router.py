@@ -8,19 +8,42 @@ from fastapi.responses import RedirectResponse, JSONResponse, StreamingResponse
 from neurocom_backend.models.daraz_model import DarazProductCreate, DarazGetAllProductsResponse, ReverseOrderInfo, ScrapedProductReviewsResponse, OrdersWithItemsResponse, ReturnsInsightsResponse, ReturnsDashboardResponse, DarazGetProductResponse, OrderWithItems
 from typing import Annotated, Optional, Any, List
 import os
+import json
+import logging
 from urllib.parse import urlencode
 from dotenv import load_dotenv
 from cryptography.fernet import InvalidToken
+from sqlmodel import Session, select
+from neurocom_backend.database.connection import get_session
+from neurocom_backend.database.models.marketplace import Marketplace, MarketplaceConnection
+from neurocom_backend.database.models.merchant import Merchant
+from neurocom_backend.dependencies import get_current_user
 
 
 def get_daraz_access_token(
     x_daraz_access_token: Annotated[str, Header()],
+    db: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[Merchant, Depends(get_current_user)],
 ) -> str:
     encrypted_token = x_daraz_access_token.strip()
     if not encrypted_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing Daraz access token",
+        )
+    connection = db.exec(
+        select(MarketplaceConnection)
+        .join(Marketplace)
+        .where(
+            MarketplaceConnection.merchant_id == current_user.id,
+            Marketplace.slug == "daraz",
+            MarketplaceConnection.encrypted_access_token == encrypted_token,
+        )
+    ).first()
+    if connection is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Daraz connection is not active for the authenticated merchant",
         )
     try:
         return decrypt_value(encrypted_token)
@@ -33,6 +56,7 @@ def get_daraz_access_token(
 _:bool = load_dotenv()
 
 router  = APIRouter(prefix="/daraz",tags=["Daraz"])
+logger = logging.getLogger(__name__)
 
 @router.get('/')
 async def root():
@@ -94,7 +118,23 @@ async def category_attributes(category_id: str):
 
 @router.post('/migrate_image')
 async def migrate_single_image(image_url: str = Body(..., embed=True), access_token: str = Depends(get_daraz_access_token)):
-    return migrate_image(access_token, image_url)
+    response = migrate_image(access_token, image_url)
+    if not isinstance(response, dict):
+        raise HTTPException(status_code=502, detail="Daraz returned an invalid image migration response")
+    data = response.get("data")
+    image = data.get("image") if isinstance(data, dict) else None
+    migrated_url = image.get("url") if isinstance(image, dict) else None
+    if not isinstance(migrated_url, str) or not migrated_url.startswith(("https://", "http://")):
+        message = response.get("message") or response.get("detail") or response.get("code")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Daraz image migration failed: {message or 'no migrated URL returned'}",
+        )
+    return {
+        "image_url": migrated_url,
+        "hash_code": image.get("hash_code"),
+        "request_id": response.get("request_id"),
+    }
 
 @router.post('/migrate_images')
 async def migrate_all_images(images_urls: list[str], access_token: str = Depends(get_daraz_access_token)):
@@ -106,7 +146,37 @@ async def migrate_images_result(batch_id: str, access_token: str = Depends(get_d
 
 @router.post('/create_new_product')
 async def new_product(product:dict = Body(...), access_token: str = Depends(get_daraz_access_token)):
-    return create_new_product(access_token, product)
+    response = create_new_product(access_token, product)
+    if not isinstance(response, dict):
+        raise HTTPException(status_code=502, detail="Daraz returned an invalid product creation response")
+    data = response.get("data")
+    item_id = data.get("item_id") if isinstance(data, dict) else None
+    code = str(response.get("code", ""))
+    if code != "0" or item_id is None:
+        message = response.get("message") or response.get("detail") or "product was not created"
+        diagnostic = response.get("detail") or response.get("errors") or response.get("data")
+        logger.warning(
+            "Daraz product creation rejected: code=%s request_id=%s diagnostic=%s",
+            code,
+            response.get("request_id"),
+            json.dumps(diagnostic, default=str) if diagnostic is not None else "none",
+        )
+        diagnostic_text = ""
+        if diagnostic is not None and diagnostic != message:
+            diagnostic_text = f" Details: {json.dumps(diagnostic, default=str)}"
+        raise HTTPException(
+            status_code=422,
+            detail=f"Daraz product creation failed ({code or 'unknown'}): {message}{diagnostic_text}",
+        )
+    sku_list = data.get("sku_list") if isinstance(data, dict) else None
+    first_sku = sku_list[0] if isinstance(sku_list, list) and sku_list else {}
+    return {
+        "item_id": str(item_id),
+        "sku_id": first_sku.get("sku_id") if isinstance(first_sku, dict) else None,
+        "code": code,
+        "request_id": response.get("request_id"),
+        "data": data,
+    }
 
 @router.get('/get_all_orders')
 async def all_orders(include_canceled: bool = False, access_token: str = Depends(get_daraz_access_token)):

@@ -97,7 +97,7 @@ def logApiError(appkey, sdkVersion, requestUrl, code, message):
     logger.error("%s^_^%s^_^%s^_^%s^_^%s^_^%s^_^%s^_^%s" % (
         appkey, sdkVersion,
         time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
-        localIp, platformType, requestUrl, code, message))
+        localIp, platformType, requestUrl.split("?", 1)[0], code, message))
 
 class LazopRequest(object):
     def __init__(self,api_pame,http_method = 'POST'):

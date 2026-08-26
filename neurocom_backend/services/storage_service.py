@@ -1,3 +1,4 @@
+import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -6,12 +7,26 @@ from uuid import UUID, uuid4
 
 import requests
 from fastapi import HTTPException
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from neurocom_backend.utils.settings import SUPABASE_PRODUCT_BUCKET, SUPABASE_SECRET_KEY, SUPABASE_URL
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMAGE_SIZE = 5 * 1024 * 1024
+logger = logging.getLogger(__name__)
+
+_connection_retries = Retry(
+    total=3,
+    connect=3,
+    read=0,
+    status=0,
+    other=0,
+    backoff_factor=0.5,
+    allowed_methods=frozenset({"POST", "DELETE"}),
+)
 _session = requests.Session()
+_session.mount("https://", HTTPAdapter(max_retries=_connection_retries, pool_connections=4, pool_maxsize=8))
 
 
 def _configuration() -> tuple[str, str, str]:
@@ -41,6 +56,12 @@ def upload_product_image(merchant_id: UUID, marketplace: str, filename: str | No
             timeout=(10, 60),
         )
     except requests.RequestException as exc:
+        logger.exception(
+            "Supabase upload connection failed: path=%s size=%s error_type=%s",
+            path,
+            len(content),
+            type(exc).__name__,
+        )
         raise HTTPException(
             status_code=502,
             detail=f"Could not reach Supabase Storage ({type(exc).__name__})",

@@ -3,6 +3,7 @@ import os
 import re
 import requests
 from dotenv import load_dotenv
+import logging
 from fastapi import HTTPException
 import json
 from xml.sax.saxutils import escape
@@ -14,6 +15,8 @@ from collections import defaultdict
 import concurrent.futures
 
 _:bool = load_dotenv()
+logger = logging.getLogger(__name__)
+
 
 lazop_client = LazopClient("https://api.daraz.pk/rest", os.getenv("DARAZ_APP_KEY"), os.getenv("DARAZ_APP_SECRET"))
 
@@ -234,11 +237,18 @@ def scrape_product_reviews(product_url: str) -> ScrapedProductReviewsResponse:
     )
     return ScrapedProductReviewsResponse.model_validate(body)
 
-def get_category_attributes(category_id: str):
+def get_category_attributes(category_id: str, access_token: str, language_code: str = "en_US"):
     request = LazopRequest("/category/attributes/get", "GET")
     request.add_api_param("primary_category_id", category_id)
-    response = lazop_client.execute(request)
-    return response.body
+    request.add_api_param("language_code", language_code)
+    response = lazop_client.execute(request, access_token)
+    body = response.body
+    if isinstance(body, str):
+        try:
+            body = json.loads(body)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=502, detail="Daraz returned an invalid category-attributes response") from exc
+    return body
   
 from functools import lru_cache
 
@@ -340,13 +350,19 @@ def get_migrated_images(access_token: str, batch_id: str):
   
 def create_new_product(access_token: str, product: Any):
   create_product_request = LazopRequest('/product/create')
+  title = str(product.get("Title") or "").strip()
+  if not title:
+      raise HTTPException(status_code=422, detail="Product title is required")
+
   product_attributes = {
-        "name": str(product["Title"]),
+        **product["Attributes"],
+        "name": title,
+        "title": title,
+        "name_en": str(product["Attributes"].get("name_en") or title),
         "short_description": str(product["Attributes"].get("short_description") or product["Skus"][0]["package_content"]),
         "description": str(product["Attributes"].get("description") or product["Skus"][0]["package_content"]),
         "warranty_type": str(product["Attributes"].get("warranty_type") or "No Warranty"),
         "brand": str(product["Attributes"].get("brand") or "No Brand"),
-        **product["Attributes"],
   }
   attributes_xml = "".join([
         f"<{attr_name}>{escape(str(attr_value))}</{attr_name}>"
@@ -356,20 +372,25 @@ def create_new_product(access_token: str, product: Any):
   images_xml = "".join([f"<Image>{escape(str(img))}</Image>" for img in product["Images"]])
   skus_xml = ""
   for sku in product["Skus"]:
-    sku_images_xml = "".join([f"<Image>{img}</Image>" for img in sku.get("Images", [])])
+    sku_images_xml = "".join([
+        f"<Image>{escape(str(img))}</Image>" for img in sku.get("Images", [])
+    ])
+    standard_sku_fields = {
+        "SellerSku", "quantity", "price", "package_length", "package_height",
+        "package_weight", "package_width", "package_content", "Images",
+    }
     sale_props = {
         name: value
-        for name, value in {
-            "color_family": sku.get("color_family"),
-            "size": sku.get("size"),
-        }.items()
-        if value not in (None, "", "default")
+        for name, value in sku.items()
+        if name not in standard_sku_fields
+        and value not in (None, "")
+        and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name)
     }
     sale_props_xml = ""
     if sale_props:
-        sale_props_xml = "<saleProp>" + "".join(
+        sale_props_xml = "".join(
             f"<{name}>{escape(str(value))}</{name}>" for name, value in sale_props.items()
-        ) + "</saleProp>"
+        )
     skus_xml += f"""
         <Sku>
             <SellerSku>{escape(str(sku['SellerSku']))}</SellerSku>
@@ -388,6 +409,7 @@ def create_new_product(access_token: str, product: Any):
     <Request>
       <Product>
         <PrimaryCategory>{product["PrimaryCategory"]}</PrimaryCategory>
+        <Title>{escape(title)}</Title>
         <SPUId/>
         <AssociatedSku/>
         <Images>{images_xml}</Images>
@@ -396,6 +418,14 @@ def create_new_product(access_token: str, product: Any):
       </Product>
     </Request>"""
     
+  logger.info(
+      "Daraz create payload: category_id=%s title_length=%s attributes=%s sku_fields=%s image_count=%s",
+      product["PrimaryCategory"],
+      len(title),
+      sorted(product_attributes),
+      sorted(product["Skus"][0]) if product["Skus"] else [],
+      len(product["Images"]),
+  )
   create_product_request.add_api_param('payload', xml_payload)
   response = lazop_client.execute(create_product_request, access_token)
   if isinstance(response.body, dict):

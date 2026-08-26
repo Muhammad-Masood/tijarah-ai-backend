@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, WebSocketE
 from contextlib import asynccontextmanager, AsyncExitStack
 from dotenv import load_dotenv
 from .database.connection import perform_migration
-from .routers import customer_support_router, order_router, product_router, daraz_router, forecast_router, reviews_router, auth_router, marketplace_router, product_chat_router
+from .routers import customer_support_router, order_router, product_router, daraz_router, shopify_router, forecast_router, reviews_router, auth_router, marketplace_router, product_chat_router
 from neurocom_backend.dependencies import get_current_user
 from neurocom_backend.mcp_server.customer_support.main import sse_app
 from neurocom_backend.mcp_server.client import MCPClient
@@ -84,6 +84,7 @@ app.include_router(auth_router.router)
 # app.include_router(product_router.router, dependencies=require_auth)
 app.include_router(customer_support_router.router, dependencies=require_auth)
 app.include_router(daraz_router.router, dependencies=require_auth)
+app.include_router(shopify_router.router, dependencies=require_auth)
 app.include_router(forecast_router.router, dependencies=require_auth)
 app.include_router(reviews_router.router, dependencies=require_auth)
 app.include_router(marketplace_router.router, dependencies=require_auth)

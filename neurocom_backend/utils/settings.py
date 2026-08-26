@@ -20,3 +20,7 @@ REDIS_USERNAME = os.getenv("REDIS_USERNAME") or None
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD") or None
 REDIS_SSL = os.getenv("REDIS_SSL", "false").strip().lower() in ("1", "true", "yes")
 DARAZ_CACHE_TTL_SECONDS = int(os.getenv("DARAZ_CACHE_TTL_SECONDS", str(24 * 60 * 60)))
+
+SHOPIFY_API_KEY = os.getenv("SHOPIFY_API_KEY")
+SHOPIFY_API_SECRET = os.getenv("SHOPIFY_API_SECRET")
+SHOPIFY_CACHE_TTL_SECONDS = int(os.getenv("SHOPIFY_CACHE_TTL_SECONDS", str(24 * 60 * 60)))

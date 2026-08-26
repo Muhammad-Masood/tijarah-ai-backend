@@ -1087,3 +1087,9 @@ def payout_statement(access_token: str):
   print(response.type)
   print(response.body)
   return response.body
+
+def get_conversations_sessions(access_token: str):
+  request = LazopRequest('/im/session/list','GET')
+  response = lazop_client.execute(request, access_token)
+  print(response.body)
+  return response.body

@@ -58,6 +58,3 @@ async def chat(prompt: str, mcp_client_session: Annotated[ClientSession, Depends
         return {"content": chat_response}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
-    # response = get_chat_response_service(prompt=prompt)
-    # return {"chat_response": response}

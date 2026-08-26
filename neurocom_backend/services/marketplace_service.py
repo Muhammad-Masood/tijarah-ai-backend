@@ -15,9 +15,15 @@ from neurocom_backend.database.models.marketplace import (
 )
 from neurocom_backend.database.models.merchant import Merchant
 from neurocom_backend.services.daraz_service import get_access_token
+from neurocom_backend.services.shopify_service import (
+    encode_shopify_credentials,
+    get_access_token as get_shopify_access_token,
+    normalize_shop,
+)
 from neurocom_backend.utils.security import encrypt_value
 
 DARAZ_SLUG = "daraz"
+SHOPIFY_SLUG = "shopify"
 
 
 def slugify(value: str) -> str:
@@ -29,6 +35,12 @@ def is_daraz_marketplace(marketplace: Marketplace) -> bool:
     slug = marketplace.slug.strip().lower()
     name = marketplace.name.strip().lower()
     return slug == DARAZ_SLUG or slug.startswith(f"{DARAZ_SLUG}-") or name == DARAZ_SLUG
+
+
+def is_shopify_marketplace(marketplace: Marketplace) -> bool:
+    slug = marketplace.slug.strip().lower()
+    name = marketplace.name.strip().lower()
+    return slug == SHOPIFY_SLUG or slug.startswith(f"{SHOPIFY_SLUG}-") or name == SHOPIFY_SLUG
 
 
 def _to_marketplace_read(marketplace: Marketplace, is_connected: bool = False) -> MarketplaceRead:
@@ -160,6 +172,39 @@ def delete_marketplace(marketplace_id: UUID, db: Session) -> MarketplaceRead:
     return response
 
 
+def _resolve_shopify_credentials(payload: ConnectMarketplaceRequest) -> str:
+    if not payload.shop or not payload.shop.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Shopify connect requires a shop domain",
+        )
+    shop = normalize_shop(payload.shop)
+
+    if payload.access_token:
+        return encode_shopify_credentials(shop, payload.access_token.strip())
+    if not payload.code:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Shopify connect requires an OAuth code or access token",
+        )
+    try:
+        token_response = get_shopify_access_token(payload.code, shop)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to exchange Shopify authorization code",
+        )
+    access_token = token_response.get("access_token")
+    if not access_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Shopify did not return an access token",
+        )
+    return encode_shopify_credentials(shop, access_token)
+
+
 def _resolve_daraz_access_token(payload: ConnectMarketplaceRequest) -> str:
     if payload.access_token:
         return payload.access_token.strip()
@@ -197,6 +242,9 @@ def connect_marketplace(
     if is_daraz_marketplace(marketplace):
         access_token = _resolve_daraz_access_token(payload)
         encrypted_token = encrypt_value(access_token)
+    elif is_shopify_marketplace(marketplace):
+        credentials_json = _resolve_shopify_credentials(payload)
+        encrypted_token = encrypt_value(credentials_json)
     elif payload.access_token:
         encrypted_token = encrypt_value(payload.access_token.strip())
 

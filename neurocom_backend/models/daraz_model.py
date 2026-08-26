@@ -36,6 +36,49 @@ class DarazProductCreate(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Shapes returned by GET /category/attributes/get
+# (daraz_service.get_category_attributes)
+# ---------------------------------------------------------------------------
+
+class CategoryAttributeAdvanced(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    is_key_prop: int = 0
+
+
+class CategoryAttributeOption(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    name: str
+
+
+class CategoryAttribute(BaseModel):
+    """One attribute definition for a primary category — used to know which
+    fields are required (is_mandatory), whether they live on the product vs
+    each SKU (attribute_type), and which enum values are legal (options)."""
+    model_config = ConfigDict(extra="allow")
+
+    id: int
+    name: str
+    label: str
+    input_type: str
+    attribute_type: str
+    is_mandatory: int = 0
+    is_sale_prop: int = 0
+    advanced: Optional[CategoryAttributeAdvanced] = None
+    options: Optional[List[CategoryAttributeOption]] = None
+
+
+class DarazCategoryAttributesResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+    data: List[CategoryAttribute] = []
+    code: str
+    request_id: Optional[str] = None
+    trace_id: Optional[str] = Field(default=None, alias="_trace_id_")
+
+
+# ---------------------------------------------------------------------------
 # Shapes returned by GET /products/get (daraz_service.get_all_products)
 # ---------------------------------------------------------------------------
 

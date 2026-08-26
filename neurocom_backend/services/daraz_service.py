@@ -6,7 +6,16 @@ from dotenv import load_dotenv
 from fastapi import HTTPException
 import json
 from xml.sax.saxutils import escape
-from neurocom_backend.models.daraz_model import DarazGetProductResponse, DarazProductCreate, DarazGetAllProductsResponse, DarazProduct, ReverseOrderInfo, ScrapedProductReview, ScrapedProductReviewsResponse
+from neurocom_backend.models.daraz_model import (
+    DarazGetProductResponse,
+    DarazProductCreate,
+    DarazGetAllProductsResponse,
+    DarazProduct,
+    DarazCategoryAttributesResponse,
+    ReverseOrderInfo,
+    ScrapedProductReview,
+    ScrapedProductReviewsResponse,
+)
 from neurocom_backend.utils.redis_cache import get_or_refresh, fingerprint
 from typing import Any, Optional
 from datetime import datetime, timedelta
@@ -234,11 +243,14 @@ def scrape_product_reviews(product_url: str) -> ScrapedProductReviewsResponse:
     )
     return ScrapedProductReviewsResponse.model_validate(body)
 
-def get_category_attributes(category_id: str):
+def get_category_attributes(category_id: str) -> DarazCategoryAttributesResponse:
     request = LazopRequest("/category/attributes/get", "GET")
     request.add_api_param("primary_category_id", category_id)
     response = lazop_client.execute(request)
-    return response.body
+    body = response.body
+    if isinstance(body, str):
+        body = json.loads(body)
+    return DarazCategoryAttributesResponse.model_validate(body)
   
 from functools import lru_cache
 

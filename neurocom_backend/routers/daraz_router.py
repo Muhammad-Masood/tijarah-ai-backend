@@ -5,7 +5,7 @@ from neurocom_backend.services.daraz_service import lazop_client, get_access_tok
 from neurocom_backend.utils.security import decrypt_value
 from neurocom_backend.utils.sse import sse_stream
 from fastapi.responses import RedirectResponse, JSONResponse, StreamingResponse
-from neurocom_backend.models.daraz_model import DarazProductCreate, DarazGetAllProductsResponse, ReverseOrderInfo, ScrapedProductReviewsResponse, OrdersWithItemsResponse, ReturnsInsightsResponse, ReturnsDashboardResponse, DarazGetProductResponse, OrderWithItems
+from neurocom_backend.models.daraz_model import DarazProductCreate, DarazGetAllProductsResponse, DarazCategoryAttributesResponse, ReverseOrderInfo, ScrapedProductReviewsResponse, OrdersWithItemsResponse, ReturnsInsightsResponse, ReturnsDashboardResponse, DarazGetProductResponse, OrderWithItems
 from typing import Annotated, Optional, Any, List
 import os
 import json
@@ -112,7 +112,7 @@ async def category_by_id(category_id: int):
 async def category_children(categoty_id: int):
     return get_category_children(categoty_id)
 
-@router.get('/get_category_attributes')
+@router.get('/get_category_attributes', response_model=DarazCategoryAttributesResponse)
 async def category_attributes(category_id: str):
     return get_category_attributes(category_id)
 

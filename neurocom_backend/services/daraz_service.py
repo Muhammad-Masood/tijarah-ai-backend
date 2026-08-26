@@ -7,7 +7,16 @@ import logging
 from fastapi import HTTPException
 import json
 from xml.sax.saxutils import escape
-from neurocom_backend.models.daraz_model import DarazGetProductResponse, DarazProductCreate, DarazGetAllProductsResponse, DarazProduct, ReverseOrderInfo, ScrapedProductReview, ScrapedProductReviewsResponse
+from neurocom_backend.models.daraz_model import (
+    DarazGetProductResponse,
+    DarazProductCreate,
+    DarazGetAllProductsResponse,
+    DarazProduct,
+    DarazCategoryAttributesResponse,
+    ReverseOrderInfo,
+    ScrapedProductReview,
+    ScrapedProductReviewsResponse,
+)
 from neurocom_backend.utils.redis_cache import get_or_refresh, fingerprint
 from typing import Any, Optional
 from datetime import datetime, timedelta

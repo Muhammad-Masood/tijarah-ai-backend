@@ -243,7 +243,7 @@ def analyze_reviews_with_llm_stream(product_name: str, product_id: str, reviews:
         return
 
     embeddings_model = OpenAIEmbeddings()
-    llm = ChatOpenAI(temperature=0, model="gpt-4o")
+    llm = ChatOpenAI(temperature=0, model="gpt-5.6-luna")
 
     sentiment_score = compute_sentiment_score(reviews)
     trend = rating_trend(reviews)

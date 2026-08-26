@@ -163,7 +163,7 @@ def _run_vision_fill(
     if not candidates and not image_urls:
         return _VisionFillResult()
 
-    llm = ChatOpenAI(temperature=0, model="gpt-4o")
+    llm = ChatOpenAI(temperature=0, model="gpt-5.6-luna")
     structured = llm.with_structured_output(_VisionFillResult)
 
     hints = []

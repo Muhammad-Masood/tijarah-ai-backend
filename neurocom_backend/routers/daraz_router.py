@@ -112,9 +112,27 @@ async def category_by_id(category_id: int):
 async def category_children(categoty_id: int):
     return get_category_children(categoty_id)
 
-@router.get('/get_category_attributes', response_model=DarazCategoryAttributesResponse)
-async def category_attributes(category_id: str):
-    return get_category_attributes(category_id)
+@router.get('/get_category_attributes')
+async def category_attributes(
+    primary_category_id: str,
+    language_code: str = "en_US",
+    access_token: str = Depends(get_daraz_access_token),
+):
+    response = get_category_attributes(primary_category_id, access_token, language_code)
+    if not isinstance(response, dict):
+        raise HTTPException(status_code=502, detail="Daraz returned an invalid category-attributes response")
+    code = str(response.get("code", ""))
+    if code != "0":
+        logger.warning(
+            "Daraz category attributes rejected: category_id=%s response=%s",
+            primary_category_id,
+            json.dumps(response, default=str),
+        )
+        raise HTTPException(
+            status_code=422,
+            detail={"message": response.get("message") or "Could not load Daraz category attributes", "daraz_response": response},
+        )
+    return response
 
 @router.post('/migrate_image')
 async def migrate_single_image(image_url: str = Body(..., embed=True), access_token: str = Depends(get_daraz_access_token)):
@@ -161,12 +179,15 @@ async def new_product(product:dict = Body(...), access_token: str = Depends(get_
             response.get("request_id"),
             json.dumps(diagnostic, default=str) if diagnostic is not None else "none",
         )
-        diagnostic_text = ""
-        if diagnostic is not None and diagnostic != message:
-            diagnostic_text = f" Details: {json.dumps(diagnostic, default=str)}"
         raise HTTPException(
             status_code=422,
-            detail=f"Daraz product creation failed ({code or 'unknown'}): {message}{diagnostic_text}",
+            detail={
+                "message": f"Daraz product creation failed ({code or 'unknown'}): {message}",
+                "daraz_code": code or None,
+                "daraz_message": message,
+                "daraz_details": diagnostic,
+                "request_id": response.get("request_id"),
+            },
         )
     sku_list = data.get("sku_list") if isinstance(data, dict) else None
     first_sku = sku_list[0] if isinstance(sku_list, list) and sku_list else {}

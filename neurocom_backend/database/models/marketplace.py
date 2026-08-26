@@ -67,6 +67,7 @@ class MarketplaceRead(BaseModel):
 class ConnectMarketplaceRequest(BaseModel):
     code: Optional[str] = None
     access_token: Optional[str] = None
+    shop: Optional[str] = None
 
 
 class MarketplaceConnectionRead(BaseModel):

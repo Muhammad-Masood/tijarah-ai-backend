@@ -10,6 +10,8 @@ from neurocom_backend.database.models.marketplace import (
     MarketplaceConnectionRead,
     MarketplaceCreate,
     MarketplaceRead,
+    PublishConnectedProductRequest,
+    PublishConnectedProductResponse,
     MarketplaceUpdate,
 )
 from neurocom_backend.database.models.merchant import Merchant
@@ -24,10 +26,20 @@ from neurocom_backend.services.marketplace_service import (
     list_merchant_connections,
     update_marketplace,
 )
+from neurocom_backend.services.marketplace_publishing_service import publish_to_connected_stores
 
 router = APIRouter(prefix="/marketplace", tags=["Marketplace"])
 
 
+
+
+@router.post("/publish-to-connected-stores", response_model=PublishConnectedProductResponse)
+async def publish_to_my_connected_stores(
+    payload: PublishConnectedProductRequest,
+    db: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[Merchant, Depends(get_current_user)],
+):
+    return publish_to_connected_stores(payload=payload, db=db, merchant=current_user)
 @router.post("/", response_model=MarketplaceRead)
 async def create_supported_marketplace(
     payload: MarketplaceCreate,

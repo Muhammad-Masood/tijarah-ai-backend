@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Optional, List, TYPE_CHECKING
+from typing import Any, Optional, List, TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field as PydanticField
@@ -26,12 +26,13 @@ class Marketplace(SQLModel, table=True):
 class MarketplaceConnection(SQLModel, table=True):
     __tablename__ = "marketplace_connection"
     __table_args__ = (
-        UniqueConstraint("merchant_id", "marketplace_id", name="uq_merchant_marketplace"),
+        UniqueConstraint("merchant_id", "marketplace_id", "store_identifier", name="uq_merchant_marketplace_store"),
     )
 
     id: Optional[UUID] = Field(primary_key=True, default_factory=uuid4, index=True)
     merchant_id: UUID = Field(foreign_key="merchant.id", nullable=False, index=True)
     marketplace_id: UUID = Field(foreign_key="marketplace.id", nullable=False, index=True)
+    store_identifier: str = Field(default="default", nullable=False, max_length=255)
     encrypted_access_token: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
     connected_at: datetime = Field(default_factory=utc_now)
 
@@ -77,5 +78,27 @@ class MarketplaceConnectionRead(BaseModel):
     marketplace_id: UUID
     merchant_id: UUID
     connected_at: datetime
+    store_identifier: str = "default"
     encrypted_access_token: Optional[str] = None
+
     marketplace: Optional[MarketplaceRead] = None
+
+class PublishConnectedProductRequest(BaseModel):
+    shopify: Optional[Any] = None
+    daraz: Optional[dict[str, Any]] = None
+
+
+class ConnectedStorePublishResult(BaseModel):
+    connection_id: UUID
+    marketplace_id: UUID
+    marketplace: str
+    store_identifier: str
+    success: bool
+    result: Optional[dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+class PublishConnectedProductResponse(BaseModel):
+    results: list[ConnectedStorePublishResult]
+    succeeded: int
+    failed: int

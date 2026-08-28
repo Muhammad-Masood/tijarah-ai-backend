@@ -1,3 +1,4 @@
+import hashlib
 import re
 from uuid import UUID
 
@@ -63,6 +64,7 @@ def _to_connection_read(connection: MarketplaceConnection) -> MarketplaceConnect
         marketplace_id=connection.marketplace_id,
         merchant_id=connection.merchant_id,
         connected_at=connection.connected_at,
+        store_identifier=connection.store_identifier,
         encrypted_access_token=connection.encrypted_access_token,
         marketplace=marketplace_read,
     )
@@ -238,13 +240,16 @@ def connect_marketplace(
 ) -> MarketplaceConnectionRead:
     marketplace = _get_marketplace_or_404(db, marketplace_id)
     encrypted_token = None
+    store_identifier = "default"
 
     if is_daraz_marketplace(marketplace):
         access_token = _resolve_daraz_access_token(payload)
+        store_identifier = "daraz-" + hashlib.sha256(access_token.encode("utf-8")).hexdigest()[:24]
         encrypted_token = encrypt_value(access_token)
     elif is_shopify_marketplace(marketplace):
         credentials_json = _resolve_shopify_credentials(payload)
         encrypted_token = encrypt_value(credentials_json)
+        store_identifier, _ = decode_shopify_credentials(credentials_json)
     elif payload.access_token:
         encrypted_token = encrypt_value(payload.access_token.strip())
 
@@ -252,6 +257,7 @@ def connect_marketplace(
         select(MarketplaceConnection).where(
             MarketplaceConnection.merchant_id == merchant.id,
             MarketplaceConnection.marketplace_id == marketplace_id,
+            MarketplaceConnection.store_identifier == store_identifier,
         )
     ).first()
 
@@ -260,6 +266,7 @@ def connect_marketplace(
             merchant_id=merchant.id,
             marketplace_id=marketplace_id,
             encrypted_access_token=encrypted_token,
+            store_identifier=store_identifier,
         )
     else:
         if encrypted_token is not None:

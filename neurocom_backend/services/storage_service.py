@@ -74,6 +74,57 @@ def upload_product_image(merchant_id: UUID, marketplace: str, filename: str | No
     return {"path": path, "public_url": public_url, "content_type": content_type, "size": len(content)}
 
 
+def download_product_image(path: str) -> tuple[bytes, str]:
+    """Download an object from Supabase Storage using the service role key.
+
+    Use this for private buckets — public /object/public/... URLs will 404.
+    """
+    base_url, key, bucket = _configuration()
+    clean_path = path.strip().lstrip("/")
+    if not clean_path or ".." in clean_path.split("/"):
+        raise HTTPException(status_code=400, detail="Invalid storage path")
+    endpoint = f"{base_url}/storage/v1/object/{quote(bucket, safe='')}/{quote(clean_path, safe='/')}"
+    try:
+        response = _session.get(
+            endpoint,
+            headers={"Authorization": f"Bearer {key}", "apikey": key},
+            timeout=(10, 60),
+        )
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail="Could not reach Supabase Storage") from exc
+    if response.status_code == 404:
+        raise HTTPException(status_code=404, detail="Storage object not found")
+    if not response.ok:
+        raise HTTPException(status_code=502, detail=f"Supabase download failed ({response.status_code})")
+    content_type = (response.headers.get("Content-Type") or "image/jpeg").split(";", 1)[0].strip().lower()
+    if not response.content:
+        raise HTTPException(status_code=400, detail="Downloaded image is empty")
+    return response.content, content_type
+
+
+def parse_supabase_object_path(image_url: str) -> str | None:
+    """Extract the object path from a Supabase storage URL, if applicable."""
+    from urllib.parse import urlparse
+
+    parsed = urlparse(image_url)
+    host = (parsed.hostname or "").lower()
+    if not host.endswith(".supabase.co"):
+        return None
+    segments = [segment for segment in parsed.path.split("/") if segment]
+    try:
+        object_idx = segments.index("object")
+    except ValueError:
+        return None
+    tail = segments[object_idx + 1 :]
+    if not tail:
+        return None
+    if tail[0] in {"public", "sign", "authenticated"}:
+        tail = tail[2:]  # drop visibility + bucket name
+    else:
+        tail = tail[1:]  # drop bucket name
+    return "/".join(tail) if tail else None
+
+
 def delete_product_images(merchant_id: UUID, paths: list[str]) -> list[str]:
     base_url, key, bucket = _configuration()
     clean = list(dict.fromkeys(path.strip().lstrip("/") for path in paths if path.strip()))

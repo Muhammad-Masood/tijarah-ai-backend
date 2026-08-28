@@ -1,11 +1,12 @@
 from fastapi.middleware.cors import CORSMiddleware
 import requests
-from fastapi import FastAPI, Request, Header, UploadFile, File, Body, APIRouter, Depends, HTTPException, status
+from fastapi import FastAPI, Request, Header, UploadFile, File, Body, APIRouter, Depends, HTTPException, status, WebSocket, WebSocketException
 from neurocom_backend.services.daraz_service import lazop_client, get_access_token, get_all_products, get_auth_code, create_new_product, get_category_attributes, migrate_images, get_migrated_images,migrate_image, get_all_categories, get_category_children, get_category_by_id, get_all_orders, get_all_orders_full, trace_order_by_id, get_product_reviews, get_all_reverse_orders_info, get_order_logistic_details, payout_statement, get_orders_with_items, get_order_by_id, get_all_products_reviews, scrape_product_reviews, get_reverse_orders_history, get_returns_insights, get_returns_insights_stream, get_returns_dashboard, get_product_by_id, get_conversations_sessions
 from neurocom_backend.utils.security import decrypt_value
 from neurocom_backend.utils.sse import sse_stream
 from fastapi.responses import RedirectResponse, JSONResponse, StreamingResponse
 from neurocom_backend.models.daraz_model import DarazProductCreate, DarazGetAllProductsResponse, DarazCategoryAttributesResponse, ReverseOrderInfo, ScrapedProductReviewsResponse, OrdersWithItemsResponse, ReturnsInsightsResponse, ReturnsDashboardResponse, DarazGetProductResponse, OrderWithItems
+from pydantic import BaseModel, model_validator
 from typing import Annotated, Optional, Any, List
 import os
 import json
@@ -17,16 +18,16 @@ from sqlmodel import Session, select
 from neurocom_backend.database.connection import get_session
 from neurocom_backend.database.models.marketplace import Marketplace, MarketplaceConnection
 from neurocom_backend.database.models.merchant import Merchant
-from neurocom_backend.dependencies import get_current_user
+from neurocom_backend.dependencies import get_current_user, get_current_user_ws
 
 
-def get_daraz_access_token(
-    x_daraz_access_token: Annotated[str, Header()],
-    db: Annotated[Session, Depends(get_session)],
-    current_user: Annotated[Merchant, Depends(get_current_user)],
+def _resolve_daraz_access_token(
+    encrypted_token: str,
+    db: Session,
+    merchant: Merchant,
 ) -> str:
-    encrypted_token = x_daraz_access_token.strip()
-    if not encrypted_token:
+    token = encrypted_token.strip()
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing Daraz access token",
@@ -35,9 +36,9 @@ def get_daraz_access_token(
         select(MarketplaceConnection)
         .join(Marketplace)
         .where(
-            MarketplaceConnection.merchant_id == current_user.id,
+            MarketplaceConnection.merchant_id == merchant.id,
             Marketplace.slug == "daraz",
-            MarketplaceConnection.encrypted_access_token == encrypted_token,
+            MarketplaceConnection.encrypted_access_token == token,
         )
     ).first()
     if connection is None:
@@ -46,12 +47,37 @@ def get_daraz_access_token(
             detail="Daraz connection is not active for the authenticated merchant",
         )
     try:
-        return decrypt_value(encrypted_token)
+        return decrypt_value(token)
     except (InvalidToken, ValueError, TypeError):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid encrypted Daraz access token",
         )
+
+
+def get_daraz_access_token(
+    x_daraz_access_token: Annotated[str, Header()],
+    db: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[Merchant, Depends(get_current_user)],
+) -> str:
+    return _resolve_daraz_access_token(x_daraz_access_token, db, current_user)
+
+
+def get_daraz_access_token_ws(
+    websocket: WebSocket,
+    db: Annotated[Session, Depends(get_session)],
+    merchant: Annotated[Merchant, Depends(get_current_user_ws)],
+) -> str:
+    """WebSocket counterpart to get_daraz_access_token — reads
+    X-Daraz-Access-Token from the handshake headers instead of HTTP Header()."""
+    encrypted_token = websocket.headers.get("x-daraz-access-token", "")
+    try:
+        return _resolve_daraz_access_token(encrypted_token, db, merchant)
+    except HTTPException as exc:
+        raise WebSocketException(
+            code=status.WS_1008_POLICY_VIOLATION,
+            reason=str(exc.detail),
+        ) from exc
 
 _:bool = load_dotenv()
 
@@ -134,19 +160,43 @@ async def category_attributes(
         )
     return response
 
+
+class MigrateImageRequest(BaseModel):
+    storage_path: Optional[str] = None
+    image_url: Optional[str] = None
+
+    @model_validator(mode="after")
+    def require_source(self):
+        if not self.storage_path and not self.image_url:
+            raise ValueError("storage_path or image_url is required")
+        return self
+
+
 @router.post('/migrate_image')
-async def migrate_single_image(image_url: str = Body(..., embed=True), access_token: str = Depends(get_daraz_access_token)):
-    response = migrate_image(access_token, image_url)
-    if not isinstance(response, dict):
-        raise HTTPException(status_code=502, detail="Daraz returned an invalid image migration response")
+async def migrate_single_image(
+    payload: MigrateImageRequest,
+    merchant: Merchant = Depends(get_current_user),
+    access_token: str = Depends(get_daraz_access_token),
+):
+    print("payload: ", payload)
+    if payload.storage_path:
+        path = payload.storage_path.strip().lstrip("/")
+        if not path.startswith(f"{merchant.id}/") or ".." in path.split("/"):
+            raise HTTPException(status_code=403, detail="Storage path does not belong to the authenticated merchant")
+    response = migrate_image(
+        access_token,
+        image_url=payload.image_url,
+        storage_path=payload.storage_path.strip().lstrip("/") if payload.storage_path else None,
+    )
     data = response.get("data")
     image = data.get("image") if isinstance(data, dict) else None
     migrated_url = image.get("url") if isinstance(image, dict) else None
-    if not isinstance(migrated_url, str) or not migrated_url.startswith(("https://", "http://")):
+    code = str(response.get("code", ""))
+    if code != "0" or not isinstance(migrated_url, str) or not migrated_url.startswith(("https://", "http://")):
         message = response.get("message") or response.get("detail") or response.get("code")
         raise HTTPException(
-            status_code=502,
-            detail=f"Daraz image migration failed: {message or 'no migrated URL returned'}",
+            status_code=422 if code in {"302", "303", "301"} else 502,
+            detail=f"Daraz image migration failed ({code or 'unknown'}): {message or 'no migrated URL returned'}",
         )
     return {
         "image_url": migrated_url,

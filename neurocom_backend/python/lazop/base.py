@@ -167,10 +167,14 @@ class LazopClient(object):
         full_url = full_url[0:-1]
 
         try:
-            if(request._http_method == 'POST' or len(request._file_params) != 0) :
-                r = requests.post(api_url,sign_parameter,files=request._file_params, timeout=self._timeout)
+            if request._file_params:
+                # File uploads: signed sys/api params go in the query string; the
+                # multipart body carries only the binary file (see Go Lazop SDK).
+                r = requests.post(api_url, params=sign_parameter, files=request._file_params, timeout=self._timeout)
+            elif request._http_method == 'POST':
+                r = requests.post(api_url, sign_parameter, timeout=self._timeout)
             else:
-                r = requests.get(api_url,sign_parameter, timeout=self._timeout)
+                r = requests.get(api_url, sign_parameter, timeout=self._timeout)
         except Exception as err:
             logApiError(self._app_key, P_SDK_VERSION, full_url, "HTTP_ERROR", str(err))
             raise err

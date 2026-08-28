@@ -213,7 +213,12 @@ _SYSTEM_PROMPT = (
 
 def build_product_chat_agent(access_token: str, product_id: int, product_sku_id: Optional[str] = None):
     tools = build_product_chat_tools(access_token, product_id, product_sku_id)
-    llm = ChatOpenAI(temperature=0, model="gpt-5.6-luna", streaming=True)
+    llm = ChatOpenAI(
+        temperature=0,
+        model="gpt-5.6-luna",
+        streaming=True,
+        reasoning_effort="none",  # required when using tool-calling via /v1/chat/completions
+    )
     return create_agent(llm, tools, system_prompt=_SYSTEM_PROMPT, checkpointer=MemorySaver())
 
 

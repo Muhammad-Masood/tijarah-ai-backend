@@ -17,11 +17,15 @@ from neurocom_backend.models.daraz_model import (
     ScrapedProductReview,
     ScrapedProductReviewsResponse,
 )
-from neurocom_backend.utils.redis_cache import get_or_refresh, fingerprint
+from neurocom_backend.services.storage_service import (
+    download_product_image,
+    parse_supabase_object_path,
+)
 from typing import Any, Optional
 from datetime import datetime, timedelta
 from collections import defaultdict
 import concurrent.futures
+from neurocom_backend.utils.redis_cache import get_or_refresh, fingerprint
 
 _:bool = load_dotenv()
 logger = logging.getLogger(__name__)
@@ -305,24 +309,138 @@ def get_category_children(category_id: int):
 
     return find_category(categories, category_id) or []
 
-def migrate_image(access_token: str, image_url: str):
-  print(access_token)
-  request = LazopRequest('/image/migrate')
-  xml_payload = f"""
+
+_DARAZ_MAX_IMAGE_BYTES = 1 * 1024 * 1024
+# Daraz /image/migrate only fetches whitelisted external URLs (SSRF-safe CDN
+# list). Supabase and most seller-hosted storage are rejected with E302.
+_DARAZ_MIGRATE_HOST_SUFFIXES = (
+    ".slatic.net",
+    ".alicdn.com",
+)
+
+
+def _is_daraz_migrate_supported_url(image_url: str) -> bool:
+    from urllib.parse import urlparse
+
+    host = (urlparse(image_url).hostname or "").lower()
+    return any(host.endswith(suffix) for suffix in _DARAZ_MIGRATE_HOST_SUFFIXES)
+
+
+def _content_type_to_filename(content_type: str, fallback_url: str) -> str:
+    ext = { "image/jpeg": ".jpg", "image/png": ".png" }.get(content_type.lower())
+    if ext:
+        return f"product{ext}"
+    from urllib.parse import urlparse
+
+    path = urlparse(fallback_url).path
+    name = path.rsplit("/", 1)[-1] if path else "product.jpg"
+    return name if name.lower().endswith((".jpg", ".jpeg", ".png")) else "product.jpg"
+
+
+def _validate_daraz_image(content: bytes, content_type: str, filename: str) -> tuple[bytes, str]:
+    normalized = content_type.split(";", 1)[0].strip().lower()
+    if normalized not in {"image/jpeg", "image/png"}:
+        raise HTTPException(
+            status_code=415,
+            detail="Daraz accepts only JPEG and PNG images (1 MB max). Re-upload as JPG or PNG.",
+        )
+    if len(content) > _DARAZ_MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Image exceeds Daraz 1 MB limit")
+    return content, _content_type_to_filename(normalized, filename)
+
+
+def _download_image_for_daraz(image_url: str) -> tuple[bytes, str]:
+    try:
+        response = requests.get(image_url, timeout=(10, 30))
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f"Could not download image: {exc}") from exc
+
+    content_type = (response.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+    content = response.content
+    if not content:
+        raise HTTPException(status_code=400, detail="Downloaded image is empty")
+    return _validate_daraz_image(content, content_type, image_url)
+
+
+def _load_image_for_daraz(*, image_url: str | None, storage_path: str | None) -> tuple[bytes, str]:
+    if storage_path:
+        content, content_type = download_product_image(storage_path)
+        return _validate_daraz_image(content, content_type, storage_path)
+
+    if not image_url:
+        raise HTTPException(status_code=400, detail="storage_path or image_url is required")
+
+    supabase_path = parse_supabase_object_path(image_url)
+    if supabase_path:
+        content, content_type = download_product_image(supabase_path)
+        return _validate_daraz_image(content, content_type, supabase_path)
+
+    return _download_image_for_daraz(image_url)
+
+
+def _parse_daraz_image_response(body: Any) -> dict:
+    if isinstance(body, str):
+        body = json.loads(body)
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=502, detail="Daraz returned an invalid image response")
+    return body
+
+
+def upload_image(access_token: str, image_bytes: bytes, filename: str = "product.jpg") -> dict:
+    """Upload image bytes via Daraz /image/upload (local upload)."""
+    if len(image_bytes) > _DARAZ_MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Image exceeds Daraz 1 MB limit")
+
+    lower = filename.lower()
+    if lower.endswith((".jpg", ".jpeg")):
+        content_type = "image/jpeg"
+    elif lower.endswith(".png"):
+        content_type = "image/png"
+    else:
+        raise HTTPException(status_code=415, detail="Daraz accepts only JPEG and PNG images")
+
+    request = LazopRequest("/image/upload")
+    request.add_file_param("image", image_bytes)
+    print("request in upload_image: ", request)
+    response = lazop_client.execute(request, access_token)
+    return _parse_daraz_image_response(response.body)
+
+
+def migrate_image(
+    access_token: str,
+    *,
+    image_url: str | None = None,
+    storage_path: str | None = None,
+) -> dict:
+    """Return a Daraz-hosted image URL for product create/update.
+
+    Prefer storage_path for Supabase uploads (private buckets). Whitelisted
+    external URLs use /image/migrate; everything else is uploaded via
+    /image/upload after server-side download.
+    """
+    if storage_path or not image_url or not _is_daraz_migrate_supported_url(image_url):
+        image_bytes, filename = _load_image_for_daraz(image_url=image_url, storage_path=storage_path)
+        return upload_image(access_token, image_bytes, filename)
+
+    request = LazopRequest("/image/migrate")
+    xml_payload = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Request>
     <Image>
-        <Url>{image_url}</Url>
+        <Url>{escape(image_url)}</Url>
     </Image>
-</Request>
-  """
-  request.add_api_param("payload", xml_payload)
-  response = lazop_client.execute(request, access_token)
-  print(response)
-  if isinstance(response.body, dict):
-        return response.body
-  else:
-    return json.loads(response.body)
-  
+</Request>"""
+
+    print("xml_payload: ", xml_payload)
+    request.add_api_param("payload", xml_payload)
+    response = lazop_client.execute(request, access_token)
+    print("response: ", response)
+    body = _parse_daraz_image_response(response.body)
+    print("body: ", body)
+    if str(body.get("code", "")) == "302":
+        image_bytes, filename = _load_image_for_daraz(image_url=image_url, storage_path=storage_path)
+        return upload_image(access_token, image_bytes, filename)
+    return body    
 def migrate_images(access_token: str, images_urls: list[str]):
   
   image_urls = [

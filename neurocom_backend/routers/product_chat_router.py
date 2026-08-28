@@ -18,7 +18,7 @@ from typing import Optional
 
 from neurocom_backend.database.models.merchant import Merchant
 from neurocom_backend.dependencies import get_current_user_ws
-from neurocom_backend.routers.daraz_router import get_daraz_access_token
+from neurocom_backend.routers.daraz_router import get_daraz_access_token_ws
 from neurocom_backend.services.product_chat_service import build_product_chat_agent, stream_product_chat_response
 
 router = APIRouter(prefix="/reviews", tags=["Reviews Analysis"])
@@ -30,7 +30,7 @@ async def product_chat(
     product_id: int,
     product_sku_id: Optional[str] = None,
     merchant: Merchant = Depends(get_current_user_ws),
-    access_token: str = Depends(get_daraz_access_token),
+    access_token: str = Depends(get_daraz_access_token_ws),
 ):
     """
     Chat about ONE product's reviews/ratings, catalog details, and orders

@@ -21,7 +21,7 @@ from neurocom_backend.utils.settings import SHOPIFY_API_KEY, SHOPIFY_API_SECRET,
 SHOPIFY_API_VERSION = os.getenv("SHOPIFY_API_VERSION", "2025-01")
 SHOPIFY_SCOPES = os.getenv(
     "SHOPIFY_SCOPES",
-    "read_products,write_products,read_orders,read_inventory,write_inventory",
+    "read_products,write_products,read_orders,read_inventory,write_inventory,read_publications,write_publications",
 )
 
 
@@ -121,7 +121,17 @@ def get_access_token(code: str, shop: str) -> dict:
     }
 
 
-def _flatten_product(node: dict) -> dict:
+def _product_storefront_url(shop: str, node: dict) -> str | None:
+    online_url = node.get("onlineStoreUrl")
+    if online_url:
+        return online_url
+    handle = node.get("handle")
+    if handle:
+        return f"https://{normalize_shop(shop)}/products/{handle}"
+    return None
+
+
+def _flatten_product(node: dict, *, shop: str | None = None) -> dict:
     images = [
         {"src": edge["node"]["src"], "altText": edge["node"].get("altText")}
         for edge in node.get("images", {}).get("edges", [])
@@ -135,7 +145,7 @@ def _flatten_product(node: dict) -> dict:
         }
         for edge in node.get("variants", {}).get("edges", [])
     ]
-    return {
+    result = {
         "id": node["id"],
         "title": node["title"],
         "handle": node.get("handle"),
@@ -150,6 +160,9 @@ def _flatten_product(node: dict) -> dict:
         "images": images,
         "variants": variants,
     }
+    if shop:
+        result["url"] = _product_storefront_url(shop, node)
+    return result
 
 
 def _fetch_all_products_raw(shop: str, access_token: str) -> list[dict]:
@@ -166,6 +179,7 @@ def _fetch_all_products_raw(shop: str, access_token: str) -> list[dict]:
             id
             title
             handle
+            onlineStoreUrl
             status
             createdAt
             updatedAt
@@ -190,7 +204,8 @@ def _fetch_all_products_raw(shop: str, access_token: str) -> list[dict]:
     while has_next_page:
         data = graphql_request(shop, access_token, query, {"cursor": cursor})
         edges = data["products"]["edges"]
-        all_products.extend(_flatten_product(edge["node"]) for edge in edges)
+        for edge in edges:
+            all_products.append(_flatten_product(edge["node"], shop=shop))
         has_next_page = data["products"]["pageInfo"]["hasNextPage"]
         cursor = edges[-1]["cursor"] if has_next_page and edges else None
 
@@ -222,6 +237,7 @@ def get_product_by_id(shop: str, access_token: str, product_id: str) -> ShopifyG
         id
         title
         handle
+        onlineStoreUrl
         status
         createdAt
         updatedAt
@@ -243,7 +259,7 @@ def get_product_by_id(shop: str, access_token: str, product_id: str) -> ShopifyG
     product = data.get("product")
     if product is None:
         return ShopifyGetProductResponse(product=None)
-    return ShopifyGetProductResponse(product=ShopifyProduct.model_validate(_flatten_product(product)))
+    return ShopifyGetProductResponse(product=ShopifyProduct.model_validate(_flatten_product(product, shop=shop)))
 
 
 def get_location_id(shop: str, access_token: str) -> str:
@@ -262,6 +278,52 @@ def get_location_id(shop: str, access_token: str) -> str:
             detail="No Shopify locations found for this store",
         )
     return edges[0]["node"]["id"]
+
+
+def get_online_store_publication_id(shop: str, access_token: str) -> str:
+    """Return the publication GID for the Online Store sales channel."""
+    query = """
+    query GetPublications {
+      publications(first: 50) {
+        nodes {
+          id
+          name
+          catalog { title }
+        }
+      }
+    }
+    """
+    data = graphql_request(shop, access_token, query)
+    for publication in data.get("publications", {}).get("nodes", []):
+        name = (publication.get("name") or "").strip().lower()
+        catalog_title = ((publication.get("catalog") or {}).get("title") or "").strip().lower()
+        if name == "online store" or catalog_title == "online store":
+            return publication["id"]
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Online Store publication not found for this Shopify shop",
+    )
+
+
+def publish_product_to_online_store(shop: str, access_token: str, product_id: str) -> None:
+    publication_id = get_online_store_publication_id(shop, access_token)
+    query = """
+    mutation PublishProduct($id: ID!, $input: [PublicationInput!]!) {
+      publishablePublish(id: $id, input: $input) {
+        publishable {
+          ... on Product { id }
+        }
+        userErrors { field message }
+      }
+    }
+    """
+    data = graphql_request(
+        shop,
+        access_token,
+        query,
+        {"id": product_id, "input": [{"publicationId": publication_id}]},
+    )
+    _raise_user_errors(data, "publishablePublish")
 
 
 def create_new_product(shop: str, access_token: str, product: ShopifyProductCreate) -> dict:
@@ -395,6 +457,8 @@ def create_new_product(shop: str, access_token: str, product: ShopifyProductCrea
         },
     )
     _raise_user_errors(inventory_data, "inventorySetQuantities")
+
+    publish_product_to_online_store(shop, access_token, product_id)
 
     return {
         "product_id": product_id,

@@ -28,6 +28,7 @@ class ShopifyProduct(BaseModel):
     status: Optional[str] = None
     createdAt: Optional[str] = None
     updatedAt: Optional[str] = None
+    url: Optional[str] = None
     description: Optional[str] = None
     productType: Optional[str] = None
     totalInventory: Optional[int] = None

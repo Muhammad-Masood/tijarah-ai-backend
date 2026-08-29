@@ -20,6 +20,7 @@ from neurocom_backend.services.shopify_service import (
     encode_shopify_credentials,
     get_access_token as get_shopify_access_token,
     normalize_shop,
+    decode_shopify_credentials
 )
 from neurocom_backend.utils.security import encrypt_value
 

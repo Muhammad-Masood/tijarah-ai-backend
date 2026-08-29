@@ -16,6 +16,7 @@ from neurocom_backend.models.daraz_model import (
     ReverseOrderInfo,
     ScrapedProductReview,
     ScrapedProductReviewsResponse,
+    _html_to_text,
 )
 from neurocom_backend.services.storage_service import (
     download_product_image,
@@ -401,9 +402,11 @@ def upload_image(access_token: str, image_bytes: bytes, filename: str = "product
         raise HTTPException(status_code=415, detail="Daraz accepts only JPEG and PNG images")
 
     request = LazopRequest("/image/upload")
+    print(filename, image_bytes, content_type)
     request.add_file_param("image", image_bytes)
     print("request in upload_image: ", request)
     response = lazop_client.execute(request, access_token)
+    print("response: ", response)
     return _parse_daraz_image_response(response.body)
 
 
@@ -474,53 +477,353 @@ def get_migrated_images(access_token: str, batch_id: str):
     if isinstance(response.body, dict):
         return response.body
     return json.loads(response.body)
-  
+
+
+# Operational fields that always live on <Sku>, never in product <Attributes>.
+_SKU_OPERATIONAL_FIELDS: frozenset[str] = frozenset({
+    "SellerSku", "quantity", "price", "special_price", "special_from_date", "special_to_date",
+    "package_length", "package_width", "package_height", "package_weight", "package_content",
+})
+_STANDARD_SKU_FIELDS: frozenset[str] = frozenset({
+    "SellerSku", "quantity", "price", "special_price", "special_from_date", "special_to_date",
+    "package_length", "package_height", "package_weight", "package_width", "package_content", "Images",
+})
+
+
+def _is_valid_xml_tag_name(name: str) -> bool:
+    return bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name))
+
+
+def _extract_sku_extra_fields(sku: dict) -> dict[str, str]:
+    return {
+        name: str(value)
+        for name, value in sku.items()
+        if name not in _STANDARD_SKU_FIELDS
+        and value not in (None, "")
+        and _is_valid_xml_tag_name(name)
+    }
+
+
+def _parse_category_attribute_sets(body: Any) -> tuple[frozenset[str], frozenset[str], frozenset[str]]:
+    """Return (sale_prop_names, sku_attribute_names, product_attribute_names)."""
+    if not isinstance(body, dict):
+        return frozenset(), frozenset(), frozenset()
+    sale_props: set[str] = set()
+    sku_attrs: set[str] = set()
+    product_attrs: set[str] = set()
+    for attr in body.get("data") or []:
+        name = attr.get("name")
+        if not name:
+            continue
+        if int(attr.get("is_sale_prop") or 0) == 1:
+            sale_props.add(name)
+        elif attr.get("attribute_type") == "sku":
+            sku_attrs.add(name)
+        else:
+            product_attrs.add(name)
+    return frozenset(sale_props), frozenset(sku_attrs), frozenset(product_attrs)
+
+
+def _load_category_attribute_sets(
+    category_id: Any,
+    access_token: str,
+    *,
+    category_body: dict | None = None,
+) -> tuple[frozenset[str], frozenset[str], frozenset[str], dict]:
+    body = category_body
+    if body is None:
+        try:
+            body = get_category_attributes(str(category_id), access_token)
+        except Exception:
+            logger.warning("Could not load category attributes for %s", category_id, exc_info=True)
+            body = {}
+    if isinstance(body, dict):
+        sale_props, sku_attrs, product_attrs = _parse_category_attribute_sets(body)
+        if sale_props or sku_attrs or product_attrs:
+            return sale_props, sku_attrs, product_attrs, body
+    return frozenset({"size"}), frozenset(), frozenset({"color_family", "color"}), body or {}
+
+
+_SIZE_CHART_ATTR_NAMES: frozenset[str] = frozenset({"size_chart", "Size_Chart_Image"})
+
+
+def _category_requires_size_chart(category_body: dict, sale_prop_names: frozenset[str]) -> bool:
+    for attr in category_body.get("data") or []:
+        if attr.get("name") in _SIZE_CHART_ATTR_NAMES:
+            return True
+    return "size" in sale_prop_names
+
+
+def _is_daraz_hosted_image_url(url: str) -> bool:
+    from urllib.parse import urlparse
+
+    host = (urlparse(url).hostname or "").lower()
+    return host.endswith((".daraz.pk", ".daraz.com")) or host.endswith(".slatic.net") or "lazada" in host
+
+
+def _extract_migrated_image_url(response: dict) -> str | None:
+    data = response.get("data")
+    image = data.get("image") if isinstance(data, dict) else None
+    url = image.get("url") if isinstance(image, dict) else None
+    if isinstance(url, str) and url.startswith(("https://", "http://")):
+        return url
+    return None
+
+
+def _resolve_daraz_image_url(
+    access_token: str,
+    *,
+    image_url: str | None = None,
+    storage_path: str | None = None,
+) -> str:
+    if storage_path:
+        response = migrate_image(access_token, storage_path=storage_path)
+    elif image_url:
+        if _is_daraz_hosted_image_url(image_url):
+            return image_url
+        response = migrate_image(access_token, image_url=image_url)
+    else:
+        raise HTTPException(status_code=422, detail="size_chart image URL or storage path is required")
+
+    migrated_url = _extract_migrated_image_url(response)
+    if migrated_url:
+        return migrated_url
+    message = response.get("message") or response.get("detail") or response.get("code")
+    raise HTTPException(
+        status_code=502,
+        detail=f"Daraz image migration failed for size chart: {message or 'no migrated URL returned'}",
+    )
+
+
+def _ensure_size_chart(
+    access_token: str,
+    product_attributes: dict[str, Any],
+    skus: list[dict],
+    *,
+    category_body: dict,
+    sale_prop_names: frozenset[str],
+    product: dict,
+) -> None:
+    if not _category_requires_size_chart(category_body, sale_prop_names):
+        return
+
+    chart_url = (
+        product_attributes.get("size_chart")
+        or product_attributes.get("Size_Chart_Image")
+        or product.get("size_chart")
+        or product.get("size_chart_url")
+    )
+    chart_storage_path = product.get("size_chart_storage_path") or product_attributes.get("size_chart_storage_path")
+    if not chart_url and not chart_storage_path and skus:
+        chart_url = skus[0].get("Size_Chart_Image") or skus[0].get("size_chart")
+        chart_storage_path = skus[0].get("size_chart_storage_path")
+
+    if not chart_url and not chart_storage_path:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Size chart image is required for this Daraz category. "
+                "Provide Attributes.size_chart, Skus[].Size_Chart_Image, or size_chart_url on the publish payload."
+            ),
+        )
+
+    daraz_url = _resolve_daraz_image_url(
+        access_token,
+        image_url=str(chart_url) if chart_url else None,
+        storage_path=str(chart_storage_path) if chart_storage_path else None,
+    )
+    product_attributes["size_chart"] = daraz_url
+    if skus:
+        skus[0]["Size_Chart_Image"] = daraz_url
+
+
+def _collect_sale_props_by_name(
+    skus: list[dict],
+    *,
+    sale_prop_names: frozenset[str],
+) -> dict[str, set[str]]:
+    by_name: dict[str, set[str]] = {}
+    for sku in skus:
+        for name, value in _extract_sku_extra_fields(sku).items():
+            if name in sale_prop_names:
+                by_name.setdefault(name, set()).add(value)
+    return by_name
+
+
+def _sale_prop_order(names: set[str]) -> list[str]:
+    priority = {"color_family": 0, "size": 1}
+    return sorted(names, key=lambda n: (priority.get(n, 2), n))
+
+
+_IMAGE_CAPABLE_SALE_PROPS: frozenset[str] = frozenset({"color_family", "color"})
+
+
+def _build_variation_xml(sale_props_by_name: dict[str, set[str]], *, sku_has_images: bool) -> str:
+    if not sale_props_by_name:
+        return ""
+    blocks: list[str] = []
+    for idx, name in enumerate(_sale_prop_order(set(sale_props_by_name)), start=1):
+        options = sorted(sale_props_by_name[name])
+        has_image = (
+            idx == 1
+            and name in _IMAGE_CAPABLE_SALE_PROPS
+            and sku_has_images
+        )
+        options_xml = "".join(f"<option>{escape(opt)}</option>" for opt in options)
+        blocks.append(
+            f"<Variation{idx}>"
+            f"<name>{escape(name)}</name>"
+            f"<hasImage>{'true' if has_image else 'false'}</hasImage>"
+            f"<customize>false</customize>"
+            f"<options>{options_xml}</options>"
+            f"</Variation{idx}>"
+        )
+    return f"<variation>{''.join(blocks)}</variation>"
+
+
+def _build_sale_prop_xml(sale_props: dict[str, str], *, prop_order: list[str]) -> str:
+    if not sale_props:
+        return ""
+    ordered = [name for name in prop_order if name in sale_props]
+    ordered.extend(name for name in sorted(sale_props) if name not in ordered)
+    inner = "".join(f"<{name}>{escape(sale_props[name])}</{name}>" for name in ordered)
+    return f"<saleProp>{inner}</saleProp>"
+
+
+def _daraz_response_detail(body: Any) -> str | None:
+    if not isinstance(body, dict):
+        return None
+    detail = body.get("detail")
+    if detail in (None, "", []):
+        return None
+    if isinstance(detail, list):
+        return "; ".join(str(item) for item in detail)
+    if isinstance(detail, dict):
+        return str(detail.get("message") or detail.get("code") or detail)
+    return str(detail)
+
+
+def _normalize_create_product_payload(
+    product: dict,
+    *,
+    migrate_to_sku_names: frozenset[str],
+) -> dict:
+    """Move category SKU fields out of Attributes and into Sku rows."""
+    attrs = dict(product.get("Attributes") or {})
+    skus = [dict(sku) for sku in (product.get("Skus") or [])]
+    if not skus:
+        raise HTTPException(status_code=422, detail="At least one SKU is required")
+
+    for field in migrate_to_sku_names:
+        value = attrs.pop(field, None)
+        if value in (None, ""):
+            continue
+        for sku in skus:
+            if sku.get(field) in (None, ""):
+                sku[field] = value
+
+    for sku in skus:
+        package_content = sku.get("package_content")
+        if isinstance(package_content, str) and package_content:
+            sku["package_content"] = _html_to_text(package_content)
+
+    attrs.pop("title", None)
+    return {**product, "Attributes": attrs, "Skus": skus}
+
+
+_COLOR_PRODUCT_FIELDS: frozenset[str] = frozenset({"color_family", "color"})
+
+
+def _promote_product_attributes(
+    product_attributes: dict[str, Any],
+    skus: list[dict],
+    product_attr_names: frozenset[str],
+) -> None:
+    """Copy values from Sku rows onto product Attributes when Daraz expects them there."""
+    promote_names = set(product_attr_names) | _COLOR_PRODUCT_FIELDS
+    for name in promote_names:
+        if product_attributes.get(name) not in (None, ""):
+            continue
+        for sku in skus:
+            value = sku.get(name)
+            if value not in (None, ""):
+                product_attributes[name] = value
+                break
+
+
 def create_new_product(access_token: str, product: Any):
   create_product_request = LazopRequest('/product/create')
+  product_dict = dict(product)
+  sale_prop_names, sku_attr_names, product_attr_names, category_body = _load_category_attribute_sets(
+      product_dict.get("PrimaryCategory"),
+      access_token,
+  )
+  migrate_to_sku_names = _SKU_OPERATIONAL_FIELDS | sale_prop_names | sku_attr_names
+  product = _normalize_create_product_payload(product_dict, migrate_to_sku_names=migrate_to_sku_names)
   title = str(product.get("Title") or "").strip()
   if not title:
       raise HTTPException(status_code=422, detail="Product title is required")
 
+  first_sku = product["Skus"][0]
+  package_fallback = str(first_sku.get("package_content") or "")
+  brand = str(product["Attributes"].get("brand") or "No Brand").strip()
+  if brand.lower() in {"no", "none", "no brand"}:
+      brand = "No Brand"
   product_attributes = {
         **product["Attributes"],
         "name": title,
-        "title": title,
         "name_en": str(product["Attributes"].get("name_en") or title),
-        "short_description": str(product["Attributes"].get("short_description") or product["Skus"][0]["package_content"]),
-        "description": str(product["Attributes"].get("description") or product["Skus"][0]["package_content"]),
+        "short_description": str(product["Attributes"].get("short_description") or package_fallback),
+        "description": str(product["Attributes"].get("description") or package_fallback),
         "warranty_type": str(product["Attributes"].get("warranty_type") or "No Warranty"),
-        "brand": str(product["Attributes"].get("brand") or "No Brand"),
+        "brand": brand,
   }
+  if not str(product_attributes.get("model") or "").strip():
+      product_attributes["model"] = "General"
+  skus = [dict(sku) for sku in product["Skus"]]
+  _promote_product_attributes(product_attributes, skus, product_attr_names)
+  _ensure_size_chart(
+      access_token,
+      product_attributes,
+      skus,
+      category_body=category_body,
+      sale_prop_names=sale_prop_names,
+      product=product_dict,
+  )
+  exclude_from_product_attrs = _SKU_OPERATIONAL_FIELDS | sale_prop_names | sku_attr_names
   attributes_xml = "".join([
         f"<{attr_name}>{escape(str(attr_value))}</{attr_name}>"
         for attr_name, attr_value in product_attributes.items()
-        if attr_value is not None and attr_value != "" and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", attr_name)
+        if attr_value is not None and attr_value != ""
+        and attr_name not in exclude_from_product_attrs
+        and _is_valid_xml_tag_name(attr_name)
   ])
   images_xml = "".join([f"<Image>{escape(str(img))}</Image>" for img in product["Images"]])
+  sale_props_by_name = _collect_sale_props_by_name(skus, sale_prop_names=sale_prop_names)
+  sale_prop_order = _sale_prop_order(set(sale_props_by_name))
+  sku_has_images = any(sku.get("Images") for sku in skus)
+  sku_images_enabled = bool(sale_prop_names & _IMAGE_CAPABLE_SALE_PROPS)
+  variation_xml = _build_variation_xml(sale_props_by_name, sku_has_images=sku_has_images)
   skus_xml = ""
-  for sku in product["Skus"]:
-    sku_images_xml = "".join([
-        f"<Image>{escape(str(img))}</Image>" for img in sku.get("Images", [])
-    ])
-    standard_sku_fields = {
-        "SellerSku", "quantity", "price", "package_length", "package_height",
-        "package_weight", "package_width", "package_content", "Images",
-    }
-    sale_props = {
-        name: value
-        for name, value in sku.items()
-        if name not in standard_sku_fields
-        and value not in (None, "")
-        and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name)
-    }
-    sale_props_xml = ""
-    if sale_props:
-        sale_props_xml = "".join(
-            f"<{name}>{escape(str(value))}</{name}>" for name, value in sale_props.items()
+  for sku in skus:
+    sku_images_xml = ""
+    if sku_images_enabled:
+        sku_images_xml = "".join([
+            f"<Image>{escape(str(img))}</Image>" for img in sku.get("Images", [])
+        ])
+    extra_fields = _extract_sku_extra_fields(sku)
+    sale_props = {name: value for name, value in extra_fields.items() if name in sale_prop_names}
+    sku_attrs_xml = "".join(
+        f"<{name}>{escape(value)}</{name}>"
+        for name, value in sorted(
+            (name, value) for name, value in extra_fields.items() if name in sku_attr_names
         )
+    )
+    sale_props_xml = _build_sale_prop_xml(sale_props, prop_order=sale_prop_order)
     skus_xml += f"""
         <Sku>
             <SellerSku>{escape(str(sku['SellerSku']))}</SellerSku>
+            {sku_attrs_xml}
             {sale_props_xml}
             <quantity>{sku['quantity']}</quantity>
             <price>{sku['price']}</price>
@@ -529,32 +832,45 @@ def create_new_product(access_token: str, product: Any):
             <package_weight>{sku['package_weight']}</package_weight>
             <package_width>{sku['package_width']}</package_width>
             <package_content>{escape(str(sku['package_content']))}</package_content>
-            <Images>{sku_images_xml}</Images>
+            {f"<Images>{sku_images_xml}</Images>" if sku_images_xml else ""}
         </Sku>
         """
   xml_payload = f"""<?xml version="1.0" encoding="UTF-8"?>
     <Request>
       <Product>
         <PrimaryCategory>{product["PrimaryCategory"]}</PrimaryCategory>
-        <Title>{escape(title)}</Title>
         <SPUId/>
         <AssociatedSku/>
         <Images>{images_xml}</Images>
+        {variation_xml}
         <Attributes>{attributes_xml}</Attributes>
         <Skus>{skus_xml}</Skus>
       </Product>
     </Request>"""
     
   logger.info(
-      "Daraz create payload: category_id=%s title_length=%s attributes=%s sku_fields=%s image_count=%s",
+      "Daraz create payload: category_id=%s title_length=%s attributes=%s sku_fields=%s sale_props=%s sku_attrs=%s product_attrs=%s image_count=%s",
       product["PrimaryCategory"],
       len(title),
       sorted(product_attributes),
       sorted(product["Skus"][0]) if product["Skus"] else [],
+      sorted(sale_prop_names),
+      sorted(sku_attr_names),
+      sorted(product_attr_names),
       len(product["Images"]),
   )
+  print("xml_payload: ", xml_payload)
   create_product_request.add_api_param('payload', xml_payload)
   response = lazop_client.execute(create_product_request, access_token)
+  if response.code and str(response.code) != "0":
+      body = response.body if isinstance(response.body, dict) else {}
+      logger.error(
+          "Daraz product/create failed: code=%s message=%s detail=%s request_id=%s",
+          response.code,
+          response.message,
+          _daraz_response_detail(body),
+          response.request_id,
+      )
   if isinstance(response.body, dict):
       return response.body
   try:

@@ -18,6 +18,19 @@ def _error_message(error: Exception) -> str:
     return str(error) or error.__class__.__name__
 
 
+def _daraz_publish_error(result: dict | None) -> str:
+    if not isinstance(result, dict):
+        return "Daraz did not create the product"
+    detail = result.get("detail")
+    if detail not in (None, "", []):
+        if isinstance(detail, dict):
+            return str(detail.get("message") or detail.get("code") or detail)
+        if isinstance(detail, list):
+            return "; ".join(str(item) for item in detail)
+        return str(detail)
+    return str(result.get("message") or "Daraz did not create the product")
+
+
 def publish_to_connected_stores(payload: PublishConnectedProductRequest, db: Session, merchant: Merchant) -> PublishConnectedProductResponse:
     connections = db.exec(select(MarketplaceConnection).join(Marketplace).where(MarketplaceConnection.merchant_id == merchant.id)).all()
     results: list[ConnectedStorePublishResult] = []
@@ -38,7 +51,7 @@ def publish_to_connected_stores(payload: PublishConnectedProductRequest, db: Ses
                 if payload.daraz is None: continue
                 result = create_daraz_product(decrypt_value(connection.encrypted_access_token), payload.daraz)
                 if not isinstance(result, dict) or str(result.get("code", "")) != "0":
-                    raise ValueError((result or {}).get("message", "Daraz did not create the product"))
+                    raise ValueError(_daraz_publish_error(result))
             else:
                 raise ValueError("Publishing is not supported for this marketplace")
             results.append(ConnectedStorePublishResult(**base, success=True, result=result))

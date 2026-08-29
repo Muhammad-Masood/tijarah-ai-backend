@@ -68,8 +68,6 @@ def get_daraz_access_token_ws(
     db: Annotated[Session, Depends(get_session)],
     merchant: Annotated[Merchant, Depends(get_current_user_ws)],
 ) -> str:
-    """WebSocket counterpart to get_daraz_access_token — reads
-    X-Daraz-Access-Token from the handshake headers instead of HTTP Header()."""
     encrypted_token = websocket.headers.get("x-daraz-access-token", "")
     try:
         return _resolve_daraz_access_token(encrypted_token, db, merchant)

@@ -26,8 +26,6 @@ async def lifespan(app: FastAPI):
     # print("MCP server running...")
     yield
 
-# app = FastAPI(title="Neurocom Backend", lifespan=lambda app: mcp.session_manager.run())
-
 app = FastAPI(title="Tijarah AI Backend Server", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
@@ -80,8 +78,6 @@ def read_root():
 require_auth = [Depends(get_current_user)]
 
 app.include_router(auth_router.router)
-# app.include_router(order_router.router, dependencies=require_auth)
-# app.include_router(product_router.router, dependencies=require_auth)
 app.include_router(customer_support_router.router, dependencies=require_auth)
 app.include_router(daraz_router.router, dependencies=require_auth)
 app.include_router(shopify_router.router, dependencies=require_auth)
@@ -90,8 +86,4 @@ app.include_router(reviews_router.router, dependencies=require_auth)
 app.include_router(marketplace_router.router, dependencies=require_auth)
 app.include_router(storage_router.router, dependencies=require_auth)
 app.include_router(product_listing_router.router, dependencies=require_auth)
-# No dependencies= here: this router's websocket route does its own
-# merchant-JWT auth per-route (get_current_user_ws) — see
-# product_chat_router's module docstring for why require_auth
-# (OAuth2PasswordBearer-based) can't be applied at include time here.
 app.include_router(product_chat_router.router)

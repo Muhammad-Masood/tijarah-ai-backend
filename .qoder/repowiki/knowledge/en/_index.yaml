@@ -1,0 +1,28 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: en-US
+branch: master
+nodes_managed: true
+exported_at: "2026-08-30T15:24:41Z"
+modules:
+    "":
+        dir_name: Neurocom Backend (FastAPI + LangChain AI Service)
+        title: Neurocom Backend (FastAPI + LangChain AI Service)
+        scope:
+            - README.md
+            - .gitignore
+            - Makefile
+            - pyproject.toml
+            - poetry.lock
+            - response_1787394617457.json
+            - review_api_dump.txt
+            - review_api_dump2.txt
+            - .env.example
+            - .python-version
+            - 1.1.6
+            - 1.109.1
+            - poetry
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []

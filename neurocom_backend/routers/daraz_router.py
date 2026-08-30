@@ -5,7 +5,7 @@ from neurocom_backend.services.daraz_service import lazop_client, get_access_tok
 from neurocom_backend.utils.security import decrypt_value
 from neurocom_backend.utils.sse import sse_stream
 from fastapi.responses import RedirectResponse, JSONResponse, StreamingResponse
-from neurocom_backend.models.daraz_model import DarazProductCreate, DarazGetAllProductsResponse, DarazCategoryAttributesResponse, ReverseOrderInfo, ScrapedProductReviewsResponse, OrdersWithItemsResponse, ReturnsInsightsResponse, ReturnsDashboardResponse, DarazGetProductResponse, OrderWithItems
+from neurocom_backend.models.daraz_model import DarazProductCreate, DarazGetAllProductsResponse, DarazCategoryAttributesResponse, ReverseOrderInfo, ScrapedProductReviewsResponse, OrdersWithItemsResponse, ReturnsInsightsResponse, ReturnsDashboardResponse, DarazGetProductResponse, OrderWithItems, CatalogSearchRequest, ProductHuntRequest, CatalogSearchResponse
 from pydantic import BaseModel, model_validator
 from typing import Annotated, Optional, Any, List
 import os
@@ -19,6 +19,7 @@ from neurocom_backend.database.connection import get_session
 from neurocom_backend.database.models.marketplace import Marketplace, MarketplaceConnection
 from neurocom_backend.database.models.merchant import Merchant
 from neurocom_backend.dependencies import get_current_user, get_current_user_ws
+from neurocom_backend.services.daraz_catalog_service import scrape_products_by_category, hunt_products_for_niche
 
 
 def _resolve_daraz_access_token(
@@ -346,3 +347,25 @@ async def conversations_sessions(access_token: str = Depends(get_daraz_access_to
 
 # venv\Scripts\activate
 # uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+
+@router.post('/catalog/search')
+async def catalog_search(payload: CatalogSearchRequest):
+    return scrape_products_by_category(
+        query=payload.query,
+        page=payload.page,
+        max_pages=payload.max_pages,
+        sort_by=payload.sort_by,
+        price_min=payload.price_min,
+        price_max=payload.price_max,
+    )
+
+
+@router.post('/catalog/hunt')
+async def product_hunt(payload: ProductHuntRequest):
+    return hunt_products_for_niche(
+        niche=payload.niche,
+        max_pages=payload.max_pages,
+        min_rating=payload.min_rating,
+        min_reviews=payload.min_reviews,
+        max_price=payload.max_price,
+    )

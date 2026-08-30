@@ -1,0 +1,2 @@
+- Project configuration and dependency pinning are centralized in `pyproject.toml` under `[tool.poetry]` rather than separate requirements files.
+- Development server invocation is abstracted behind a Makefile target so developers start the app with a single `make run` command.

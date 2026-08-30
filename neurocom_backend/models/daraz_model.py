@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import List, Optional, Dict, Any
 
+
 class Sku(BaseModel):
     SellerSku: str
     Url: str
@@ -16,6 +17,7 @@ class Sku(BaseModel):
     package_width: int
     package_content: str
     Images: List[str]
+
 
 class DarazProductCreate(BaseModel):
     PrimaryCategory: int
@@ -82,7 +84,8 @@ class DarazCategoryAttributesResponse(BaseModel):
 # Shapes returned by GET /products/get (daraz_service.get_all_products)
 # ---------------------------------------------------------------------------
 
-_BLOCK_TAGS = ("p", "div", "li", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6", "article", "tr")
+_BLOCK_TAGS = ("p", "div", "li", "ul", "ol", "h1", "h2",
+               "h3", "h4", "h5", "h6", "article", "tr")
 
 
 def _html_to_text(value: Optional[str]) -> Optional[str]:
@@ -209,6 +212,7 @@ class DarazGetAllProductsResponse(BaseModel):
     data: DarazProductsData
     code: str
     request_id: Optional[str] = None
+
 
 class DarazGetProductResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
@@ -457,3 +461,66 @@ class ReturnsInsightsResponse(BaseModel):
 class ReturnsDashboardResponse(BaseModel):
     date_range: ReturnsDateRange
     top_products_by_return_rate: List[ProductReturnStats]
+
+
+class CatalogProductItem(BaseModel):
+    item_id: str = Field(alias="nid")
+    name: str
+    image: str
+    price: str
+    original_price: Optional[str] = None
+    discount: Optional[str] = None
+    rating_score: Optional[str] = Field(default=None, alias="ratingScore")
+    review_count: Optional[str] = Field(default=None, alias="review")
+    seller_name: Optional[str] = Field(default=None, alias="sellerName")
+    seller_id: Optional[str] = Field(default=None, alias="sellerId")
+    brand_name: Optional[str] = Field(default=None, alias="brandName")
+    brand_id: Optional[str] = Field(default=None, alias="brandId")
+    location: Optional[str] = None
+    in_stock: bool = Field(default=True, alias="inStock")
+    item_url: Optional[str] = Field(default=None, alias="itemUrl")
+    item_sold: Optional[str] = Field(default=None, alias="itemSoldCntShow")
+    categories: List[int] = []
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class CatalogFilterOption(BaseModel):
+    title: str
+    value: str
+    url: Optional[str] = None
+
+
+class CatalogFilter(BaseModel):
+    name: str
+    title: str
+    filter_type: str = Field(alias="type")
+    options: List[CatalogFilterOption] = []
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class CatalogSearchResponse(BaseModel):
+    query: str
+    page: int
+    total_pages: int = 1
+    total_products: int = 0
+    products: List[CatalogProductItem]
+    available_filters: List[CatalogFilter] = []
+    subcategories: List[CatalogFilterOption] = []
+
+class CatalogSearchRequest(BaseModel):
+    query: str
+    page: int = 1
+    max_pages: int = 1
+    sort_by: Optional[str] = None
+    price_min: Optional[int] = None
+    price_max: Optional[int] = None
+
+
+class ProductHuntRequest(BaseModel):
+    niche: str
+    max_pages: int = 3
+    min_rating: float = 0
+    min_reviews: int = 0
+    max_price: Optional[int] = None

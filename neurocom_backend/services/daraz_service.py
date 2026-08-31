@@ -86,6 +86,7 @@ def _clean_all_products_payload(raw_body: dict) -> dict:
     """Expensive step (BeautifulSoup HTML->text cleanup + full model
     validation). Only called when the raw payload's hash has actually
     changed since the last cache write — see get_or_refresh."""
+    _enrich_primary_category_names(raw_body)
     validated = DarazGetAllProductsResponse.model_validate(raw_body)
     return validated.model_dump(mode="json")
 
@@ -97,10 +98,13 @@ def get_all_products(access_token: str) -> DarazGetAllProductsResponse:
         fetch_raw_fn=lambda: _fetch_all_products_raw(access_token),
         transform_fn=_clean_all_products_payload,
     )
+    _enrich_primary_category_names(body)
+    print("pr res: ", DarazGetAllProductsResponse.model_validate(body))
     return DarazGetAllProductsResponse.model_validate(body)
 
 def get_product_by_id(product_id: int, access_token: str) -> DarazGetProductResponse:
     body = _fetch_product_by_id_raw(product_id, access_token)
+    _enrich_primary_category_names(body)
     return DarazGetProductResponse.model_validate(body)
 
 def get_all_products_reviews(access_token: str):
@@ -281,6 +285,45 @@ def find_category(categories, category_id: int):
             if result:
                 return result
     return None
+
+
+@lru_cache(maxsize=1)
+def _category_name_lookup() -> dict[int, str]:
+    lookup: dict[int, str] = {}
+
+    def walk(nodes: list) -> None:
+        for node in nodes:
+            category_id = node.get("category_id")
+            name = node.get("name")
+            if category_id is not None and name:
+                lookup[int(category_id)] = str(name)
+            children = node.get("children") or []
+            if children:
+                walk(children)
+
+    walk(get_all_categories())
+    return lookup
+
+
+def _enrich_primary_category_names(body: dict) -> None:
+    lookup = _category_name_lookup()
+    data = body.get("data")
+    if not isinstance(data, dict):
+        return
+
+    def set_name(product: dict) -> None:
+        category_id = product.get("primary_category")
+        if category_id is not None:
+            product["primary_category_name"] = lookup.get(int(category_id))
+
+    products = data.get("products")
+    if isinstance(products, list):
+        for product in products:
+            if isinstance(product, dict):
+                set_name(product)
+    elif "primary_category" in data:
+        set_name(data)
+
 
 def get_category_by_id(category_id: int):
     all_categories = get_all_categories()

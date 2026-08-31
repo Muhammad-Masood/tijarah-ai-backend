@@ -4,6 +4,7 @@
 **Referenced Files in This Document**
 - [daraz_router.py](file://neurocom_backend/routers/daraz_router.py)
 - [daraz_service.py](file://neurocom_backend/services/daraz_service.py)
+- [daraz_catalog_service.py](file://neurocom_backend/services/daraz_catalog_service.py)
 - [base.py](file://neurocom_backend/python/lazop/base.py)
 - [daraz_model.py](file://neurocom_backend/models/daraz_model.py)
 - [auth_router.py](file://neurocom_backend/routers/auth_router.py)
@@ -13,6 +14,13 @@
 - [reviews_router.py](file://neurocom_backend/routers/reviews_router.py)
 - [reviews_service.py](file://neurocom_backend/services/reviews_service.py)
 </cite>
+
+## Update Summary
+**Changes Made**
+- Added comprehensive product hunting and catalog search functionality with two new endpoints
+- Integrated new service layer (daraz_catalog_service.py) for public catalog scraping
+- Enhanced model definitions for catalog operations including product filtering and niche analysis
+- Added intelligent product discovery capabilities with rating, review, and price-based filtering
 
 ## Table of Contents
 1. Introduction
@@ -29,17 +37,18 @@
 This document provides comprehensive API documentation for the Daraz marketplace integration exposed by the backend service. It covers:
 - OAuth authentication flow (authorization code exchange and access token management)
 - Product management endpoints (create, retrieve, category attributes, image migration)
+- **NEW**: Catalog search and product hunting endpoints for automated product discovery
 - Order processing endpoints (orders, tracking, logistics, reverse orders)
 - Review scraping and analysis
 - Payout statements and conversation sessions
 - Request/response schemas, error handling patterns, and rate limiting considerations specific to Daraz API constraints
 
-The integration uses a custom Lazop client to call Daraz APIs, with FastAPI routers exposing secure endpoints that require merchant authentication and a per-request encrypted Daraz access token header.
+The integration uses a custom Lazop client to call Daraz APIs, with FastAPI routers exposing secure endpoints that require merchant authentication and a per-request encrypted Daraz access token header. The new catalog search functionality enables public product discovery without requiring merchant authentication.
 
 ## Project Structure
 Key modules involved in the Daraz integration:
 - Routers: HTTP endpoints under /daraz, /auth, /reviews
-- Services: Business logic for Daraz API calls, caching, product normalization, review analysis
+- Services: Business logic for Daraz API calls, caching, product normalization, review analysis, **and catalog scraping**
 - Models: Pydantic models defining request/response shapes
 - Lazop SDK wrapper: Low-level HTTP signing and execution against Daraz endpoints
 - Security: JWT-based merchant auth and encrypted token handling
@@ -51,27 +60,31 @@ Client --> DarazRouter["/daraz/* (Daraz endpoints)"]
 Client --> ReviewsRouter["/reviews/* (Review analysis)"]
 AuthRouter --> AuthService["authenticate_merchant"]
 DarazRouter --> DarazService["Lazop calls + business logic"]
+DarazRouter --> CatalogService["Catalog scraping + product hunting"]
 ReviewsRouter --> ReviewsService["Scrape + analyze reviews"]
 DarazService --> LazopClient["LazopClient.execute()"]
+CatalogService --> PublicAPI["Public Daraz Catalog API"]
 DarazService --> Models["Pydantic models"]
 DarazRouter --> Security["Decrypt access token"]
 DarazRouter --> Dependencies["Merchant resolution"]
 ```
 
 **Diagram sources**
-- [daraz_router.py:82-329](file://neurocom_backend/routers/daraz_router.py#L82-L329)
+- [daraz_router.py:82-372](file://neurocom_backend/routers/daraz_router.py#L82-L372)
 - [auth_router.py:15-42](file://neurocom_backend/routers/auth_router.py#L15-L42)
 - [reviews_router.py:11-42](file://neurocom_backend/routers/reviews_router.py#L11-L42)
 - [daraz_service.py:35-800](file://neurocom_backend/services/daraz_service.py#L35-L800)
+- [daraz_catalog_service.py:1-235](file://neurocom_backend/services/daraz_catalog_service.py#L1-L235)
 - [base.py:131-204](file://neurocom_backend/python/lazop/base.py#L131-L204)
 - [security.py:22-43](file://neurocom_backend/utils/security.py#L22-L43)
 - [dependencies.py:14-79](file://neurocom_backend/dependencies.py#L14-L79)
 
 **Section sources**
-- [daraz_router.py:82-329](file://neurocom_backend/routers/daraz_router.py#L82-L329)
+- [daraz_router.py:82-372](file://neurocom_backend/routers/daraz_router.py#L82-L372)
 - [auth_router.py:15-42](file://neurocom_backend/routers/auth_router.py#L15-L42)
 - [reviews_router.py:11-42](file://neurocom_backend/routers/reviews_router.py#L11-L42)
 - [daraz_service.py:35-800](file://neurocom_backend/services/daraz_service.py#L35-L800)
+- [daraz_catalog_service.py:1-235](file://neurocom_backend/services/daraz_catalog_service.py#L1-L235)
 - [base.py:131-204](file://neurocom_backend/python/lazop/base.py#L131-L204)
 - [security.py:22-43](file://neurocom_backend/utils/security.py#L22-L43)
 - [dependencies.py:14-79](file://neurocom_backend/dependencies.py#L14-L79)
@@ -80,8 +93,12 @@ DarazRouter --> Dependencies["Merchant resolution"]
 - OAuth and Merchant Authentication:
   - POST /auth/login returns a JWT for merchant accounts
   - All Daraz endpoints require a valid merchant JWT plus an encrypted Daraz access token header
+- **NEW**: Catalog Search and Product Hunting:
+  - POST /catalog/search: Search products by query with pagination and filtering
+  - POST /catalog/hunt: Intelligent product discovery based on niches with quality filters
+  - No authentication required for public catalog scraping
 - Daraz Access Token Resolution:
-  - Header x-daraz-access-token is decrypted and validated against the authenticated merchant’s connection
+  - Header x-daraz-access-token is decrypted and validated against the authenticated merchant's connection
 - Lazop Client:
   - Signs requests using SHA-256 and app_key/app_secret; supports GET/POST and file uploads
 - Product Management:
@@ -106,13 +123,14 @@ DarazRouter --> Dependencies["Merchant resolution"]
 - [security.py:22-43](file://neurocom_backend/utils/security.py#L22-L43)
 - [dependencies.py:14-79](file://neurocom_backend/dependencies.py#L14-L79)
 - [base.py:131-204](file://neurocom_backend/python/lazop/base.py#L131-L204)
-- [daraz_router.py:85-329](file://neurocom_backend/routers/daraz_router.py#L85-L329)
+- [daraz_router.py:85-372](file://neurocom_backend/routers/daraz_router.py#L85-L372)
 - [daraz_service.py:35-800](file://neurocom_backend/services/daraz_service.py#L35-L800)
+- [daraz_catalog_service.py:109-235](file://neurocom_backend/services/daraz_catalog_service.py#L109-L235)
 - [reviews_router.py:11-42](file://neurocom_backend/routers/reviews_router.py#L11-L42)
 - [reviews_service.py:59-304](file://neurocom_backend/services/reviews_service.py#L59-L304)
 
 ## Architecture Overview
-The system exposes REST endpoints that enforce merchant authentication and per-call Daraz authorization. The Daraz service layer handles API calls through a Lazop client, caches results where appropriate, normalizes payloads, and enforces domain rules (e.g., required size charts).
+The system exposes REST endpoints that enforce merchant authentication and per-call Daraz authorization. The Daraz service layer handles API calls through a Lazop client, caches results where appropriate, normalizes payloads, and enforces domain rules (e.g., required size charts). **The new catalog service layer provides public product discovery capabilities without requiring merchant authentication.**
 
 ```mermaid
 sequenceDiagram
@@ -120,22 +138,30 @@ participant C as "Client"
 participant A as "Auth Router"
 participant D as "Daraz Router"
 participant S as "Daraz Service"
+participant CS as "Catalog Service"
 participant L as "Lazop Client"
+participant PA as "Public API"
 participant DB as "Database"
 C->>A : POST /auth/login
 A-->>C : JWT (merchant)
-C->>D : GET /daraz/get_all_products<br/>Headers : Authorization (JWT), x-daraz-access-token (encrypted)
-D->>DB : Resolve merchant and decrypt token
-D->>S : get_all_products(access_token)
-S->>L : execute("/products/get")
-L-->>S : JSON response
-S-->>D : Validated model
-D-->>C : Products data
+C->>D : POST /catalog/search<br/>Body : {query, page, max_pages}
+D->>CS : scrape_products_by_category()
+CS->>PA : GET https : //www.daraz.pk/catalog/?ajax=true
+PA-->>CS : JSON response
+CS-->>D : Filtered products
+D-->>C : Catalog search results
+C->>D : POST /catalog/hunt<br/>Body : {niche, min_rating, min_reviews}
+D->>CS : hunt_products_for_niche()
+CS->>PA : Multiple catalog requests
+PA-->>CS : Product data
+CS-->>D : Recommended products
+D-->>C : Niche recommendations
 ```
 
 **Diagram sources**
 - [auth_router.py:24-37](file://neurocom_backend/routers/auth_router.py#L24-L37)
-- [daraz_router.py:58-109](file://neurocom_backend/routers/daraz_router.py#L58-L109)
+- [daraz_router.py:351-371](file://neurocom_backend/routers/daraz_router.py#L351-L371)
+- [daraz_catalog_service.py:109-235](file://neurocom_backend/services/daraz_catalog_service.py#L109-L235)
 - [daraz_service.py:55-100](file://neurocom_backend/services/daraz_service.py#L55-L100)
 - [base.py:140-204](file://neurocom_backend/python/lazop/base.py#L140-L204)
 - [security.py:31-43](file://neurocom_backend/utils/security.py#L31-L43)
@@ -182,6 +208,61 @@ Common errors:
 **Section sources**
 - [daraz_router.py:24-78](file://neurocom_backend/routers/daraz_router.py#L24-L78)
 - [security.py:31-43](file://neurocom_backend/utils/security.py#L31-L43)
+
+### **NEW**: Catalog Search and Product Hunting Endpoints
+Endpoints:
+- POST /catalog/search: Search products by query with pagination, sorting, and price filtering
+- POST /catalog/hunt: Intelligent product discovery based on niches with quality filters
+
+**Updated** Added comprehensive product discovery capabilities without requiring merchant authentication.
+
+Request/response schemas:
+- CatalogSearchRequest: { query, page, max_pages, sort_by, price_min, price_max }
+- ProductHuntRequest: { niche, max_pages, min_rating, min_reviews, max_price }
+- CatalogSearchResponse: { query, page, total_pages, total_products, products, available_filters, subcategories }
+- ProductHuntResponse: { niche, total_scraped, total_recommended, subcategories, recommended_products }
+
+Product filtering criteria:
+- Minimum rating threshold (ratingScore)
+- Minimum review count threshold
+- Maximum price limit
+- Automatic sorting by rating and review count
+
+Error handling:
+- Network errors during scraping raise HTTP exceptions
+- Invalid queries return empty results
+- Rate limiting handled internally with delays between requests
+
+Rate limiting:
+- Built-in 1.5 second delay between requests to avoid overwhelming Daraz servers
+- Maximum 50 pages per request to prevent excessive scraping
+- Optional session cookies for higher rate limits
+
+**Section sources**
+- [daraz_router.py:351-371](file://neurocom_backend/routers/daraz_router.py#L351-L371)
+- [daraz_catalog_service.py:109-235](file://neurocom_backend/services/daraz_catalog_service.py#L109-L235)
+- [daraz_model.py:466-526](file://neurocom_backend/models/daraz_model.py#L466-L526)
+
+#### Product Hunting Flow
+```mermaid
+flowchart TD
+Start(["Product Hunt"]) --> Scrape["Scrape Products by Niche"]
+Scrape --> Filter["Apply Quality Filters"]
+Filter --> CheckRating{"Min Rating Met?"}
+CheckRating --> |No| Skip["Skip Product"]
+CheckRating --> |Yes| CheckReviews{"Min Reviews Met?"}
+CheckReviews --> |No| Skip
+CheckReviews --> |Yes| CheckPrice{"Under Price Limit?"}
+CheckPrice --> |No| Skip
+CheckPrice --> |Yes| Add["Add to Recommendations"]
+Skip --> Next["Next Product"]
+Add --> Sort["Sort by Rating & Reviews"]
+Sort --> Return["Return Recommendations"]
+```
+
+**Diagram sources**
+- [daraz_catalog_service.py:187-235](file://neurocom_backend/services/daraz_catalog_service.py#L187-L235)
+- [daraz_router.py:363-371](file://neurocom_backend/routers/daraz_router.py#L363-L371)
 
 ### Product Management Endpoints
 Endpoints:
@@ -307,32 +388,37 @@ Rate limiting:
 ## Dependency Analysis
 - Routers depend on services for business logic and on security/dependencies for authentication
 - Services depend on Lazop client for API calls and on Pydantic models for validation
+- **NEW**: Catalog service depends on public HTTP requests to Daraz catalog endpoints
 - Lazop client handles signing and HTTP transport
 
 ```mermaid
 graph LR
 DarazRouter --> DarazService
+DarazRouter --> CatalogService
 DarazRouter --> Security
 DarazRouter --> Dependencies
 DarazService --> LazopClient
+CatalogService --> PublicAPI
 DarazService --> Models
 ReviewsRouter --> ReviewsService
 ReviewsService --> Models
 ```
 
 **Diagram sources**
-- [daraz_router.py:82-329](file://neurocom_backend/routers/daraz_router.py#L82-L329)
+- [daraz_router.py:82-372](file://neurocom_backend/routers/daraz_router.py#L82-L372)
 - [daraz_service.py:35-800](file://neurocom_backend/services/daraz_service.py#L35-L800)
+- [daraz_catalog_service.py:1-235](file://neurocom_backend/services/daraz_catalog_service.py#L1-L235)
 - [base.py:131-204](file://neurocom_backend/python/lazop/base.py#L131-L204)
-- [daraz_model.py:1-460](file://neurocom_backend/models/daraz_model.py#L1-L460)
+- [daraz_model.py:1-526](file://neurocom_backend/models/daraz_model.py#L1-L526)
 - [reviews_router.py:11-42](file://neurocom_backend/routers/reviews_router.py#L11-L42)
 - [reviews_service.py:59-304](file://neurocom_backend/services/reviews_service.py#L59-L304)
 
 **Section sources**
-- [daraz_router.py:82-329](file://neurocom_backend/routers/daraz_router.py#L82-L329)
+- [daraz_router.py:82-372](file://neurocom_backend/routers/daraz_router.py#L82-L372)
 - [daraz_service.py:35-800](file://neurocom_backend/services/daraz_service.py#L35-L800)
+- [daraz_catalog_service.py:1-235](file://neurocom_backend/services/daraz_catalog_service.py#L1-L235)
 - [base.py:131-204](file://neurocom_backend/python/lazop/base.py#L131-L204)
-- [daraz_model.py:1-460](file://neurocom_backend/models/daraz_model.py#L1-L460)
+- [daraz_model.py:1-526](file://neurocom_backend/models/daraz_model.py#L1-L526)
 - [reviews_router.py:11-42](file://neurocom_backend/routers/reviews_router.py#L11-L42)
 - [reviews_service.py:59-304](file://neurocom_backend/services/reviews_service.py#L59-L304)
 
@@ -345,6 +431,11 @@ ReviewsService --> Models
   - HTML descriptions are cleaned to plain text to reduce payload size and improve readability
 - Image handling:
   - Images are validated for type and size; unsupported hosts fall back to upload rather than migrate
+- **NEW**: Catalog scraping performance:
+  - Built-in 1.5-second delays between requests to respect Daraz server limits
+  - Maximum 50 pages per request to prevent excessive scraping
+  - Optional session cookies for improved rate limits
+  - Efficient parsing of filter data and subcategories
 - Rate limiting:
   - No built-in rate limiter; implement client-side retries with exponential backoff on non-zero codes from Lazop responses
   - Avoid large batch operations during peak hours; use pagination and date filters
@@ -356,6 +447,11 @@ Common issues and resolutions:
 - Missing or invalid Daraz access token:
   - Ensure x-daraz-access-token header is present and corresponds to an active merchant connection
   - Decryption errors return 400; verify encryption key configuration
+- **NEW**: Catalog scraping issues:
+  - Network timeouts: Increase timeout settings or retry with different headers
+  - Rate limiting: Implement exponential backoff and reduce request frequency
+  - Empty results: Verify query terms match Daraz catalog terminology
+  - Session cookies: Consider adding cookies for higher rate limits
 - Product creation failures:
   - Inspect daraz_code, daraz_message, daraz_details, and request_id in the error response
   - Ensure required fields like title and size chart (if required by category) are provided
@@ -382,11 +478,13 @@ Error patterns:
 - [daraz_router.py:139-159](file://neurocom_backend/routers/daraz_router.py#L139-L159)
 - [daraz_router.py:173-207](file://neurocom_backend/routers/daraz_router.py#L173-L207)
 - [daraz_router.py:213-248](file://neurocom_backend/routers/daraz_router.py#L213-L248)
+- [daraz_router.py:351-371](file://neurocom_backend/routers/daraz_router.py#L351-L371)
 - [daraz_service.py:341-350](file://neurocom_backend/services/daraz_service.py#L341-L350)
 - [daraz_service.py:413-446](file://neurocom_backend/services/daraz_service.py#L413-L446)
+- [daraz_catalog_service.py:118-127](file://neurocom_backend/services/daraz_catalog_service.py#L118-L127)
 - [reviews_router.py:17-42](file://neurocom_backend/routers/reviews_router.py#L17-L42)
 
 ## Conclusion
-The Daraz integration provides a robust set of endpoints for OAuth-driven merchant authentication, product lifecycle management, order processing, review scraping and analysis, payouts, and conversations. The architecture emphasizes secure token handling, strict validation via Pydantic models, and efficient caching and concurrency strategies. For production deployments, implement client-side rate limiting and monitoring around Daraz API responses to handle throttling gracefully.
+The Daraz integration provides a robust set of endpoints for OAuth-driven merchant authentication, product lifecycle management, **intelligent product discovery through catalog search and hunting**, order processing, review scraping and analysis, payouts, and conversations. The architecture emphasizes secure token handling, strict validation via Pydantic models, efficient caching and concurrency strategies, **and public product discovery capabilities without requiring merchant authentication**. For production deployments, implement client-side rate limiting and monitoring around Daraz API responses to handle throttling gracefully.
 
 [No sources needed since this section summarizes without analyzing specific files]

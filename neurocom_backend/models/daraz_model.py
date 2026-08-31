@@ -193,6 +193,7 @@ class DarazProductAttributes(BaseModel):
 class DarazProduct(BaseModel):
     item_id: int
     primary_category: int
+    primary_category_name: Optional[str] = None
     status: str
     created_time: str
     updated_time: str
@@ -524,3 +525,10 @@ class ProductHuntRequest(BaseModel):
     min_rating: float = 0
     min_reviews: int = 0
     max_price: Optional[int] = None
+
+class ProductHuntResponse(BaseModel):
+    niche: str
+    total_scraped: int = 0
+    total_recommended: int = 0
+    subcategories: List[CatalogFilterOption] = []
+    recommended_products: List[CatalogProductItem] = []

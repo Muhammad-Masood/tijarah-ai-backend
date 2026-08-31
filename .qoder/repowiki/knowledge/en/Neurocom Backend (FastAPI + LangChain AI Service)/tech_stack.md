@@ -1,1 +1,0 @@
-FastAPI 0.115 + Uvicorn ASGI server; SQLModel + psycopg2-binary for PostgreSQL ORM; PyJWT/bcrypt/passlib for auth; OpenAI SDK 1.109.1, google-genai, langchain 1.2, langgraph 1.2, langchain-openai, chromadb for LLM/vector workflows; Redis+hiredis for caching; scikit-learn/pandas/numpy for ML; cryptography and beautifulsoup4 for auxiliary tasks.

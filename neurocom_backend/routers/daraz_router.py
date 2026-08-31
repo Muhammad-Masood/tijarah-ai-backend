@@ -5,7 +5,7 @@ from neurocom_backend.services.daraz_service import lazop_client, get_access_tok
 from neurocom_backend.utils.security import decrypt_value
 from neurocom_backend.utils.sse import sse_stream
 from fastapi.responses import RedirectResponse, JSONResponse, StreamingResponse
-from neurocom_backend.models.daraz_model import DarazProductCreate, DarazGetAllProductsResponse, DarazCategoryAttributesResponse, ReverseOrderInfo, ScrapedProductReviewsResponse, OrdersWithItemsResponse, ReturnsInsightsResponse, ReturnsDashboardResponse, DarazGetProductResponse, OrderWithItems, CatalogSearchRequest, ProductHuntRequest, CatalogSearchResponse
+from neurocom_backend.models.daraz_model import DarazProductCreate, DarazGetAllProductsResponse, DarazCategoryAttributesResponse, ReverseOrderInfo, ScrapedProductReviewsResponse, OrdersWithItemsResponse, ReturnsInsightsResponse, ReturnsDashboardResponse, DarazGetProductResponse, OrderWithItems, CatalogSearchRequest, ProductHuntRequest, CatalogSearchResponse, ProductHuntResponse
 from pydantic import BaseModel, model_validator
 from typing import Annotated, Optional, Any, List
 import os
@@ -348,7 +348,7 @@ async def conversations_sessions(access_token: str = Depends(get_daraz_access_to
 # venv\Scripts\activate
 # uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 
-@router.post('/catalog/search')
+@router.post('/catalog/search', response_model=CatalogSearchResponse)
 async def catalog_search(payload: CatalogSearchRequest):
     return scrape_products_by_category(
         query=payload.query,
@@ -360,8 +360,9 @@ async def catalog_search(payload: CatalogSearchRequest):
     )
 
 
-@router.post('/catalog/hunt')
+@router.post('/catalog/hunt', response_model=ProductHuntResponse)
 async def product_hunt(payload: ProductHuntRequest):
+    print("payload: ", payload)
     return hunt_products_for_niche(
         niche=payload.niche,
         max_pages=payload.max_pages,

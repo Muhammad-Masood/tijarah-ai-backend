@@ -1,0 +1,1 @@
+Start the dev server with `make run` (equivalent to `poetry run uvicorn neurocom_backend.main:app --host 0.0.0.0 --port 8000 --reload`). Python version pinned in `.python-version`; dependencies managed via Poetry with `poetry.lock` present.

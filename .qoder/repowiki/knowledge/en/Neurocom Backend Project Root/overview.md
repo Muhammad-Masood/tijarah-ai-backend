@@ -1,0 +1,1 @@
+Root of the Poetry-managed neurocom-backend FastAPI service that exposes an ASGI application and integrates OpenAI, Google GenAI, LangChain/LangGraph, ChromaDB, Redis, and SQLModel for an AI-powered backend.

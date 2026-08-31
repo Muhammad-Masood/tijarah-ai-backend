@@ -1,1 +1,0 @@
-Python FastAPI backend project that exposes an ASGI application via Uvicorn and integrates OpenAI, Google GenAI, LangChain, ChromaDB, Redis, and SQLModel for an AI-powered service.

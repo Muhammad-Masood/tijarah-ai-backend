@@ -1,11 +1,11 @@
 from fastapi.middleware.cors import CORSMiddleware
 import requests
 from fastapi import FastAPI, Request, Header, UploadFile, File, Body, APIRouter, Depends, HTTPException, status, WebSocket, WebSocketException
-from neurocom_backend.services.daraz_service import lazop_client, get_access_token, get_all_products, get_auth_code, create_new_product, get_category_attributes, migrate_images, get_migrated_images,migrate_image, get_all_categories, get_category_children, get_category_by_id, get_all_orders, get_all_orders_full, trace_order_by_id, get_product_reviews, get_all_reverse_orders_info, get_order_logistic_details, payout_statement, get_orders_with_items, get_order_by_id, get_all_products_reviews, scrape_product_reviews, get_reverse_orders_history, get_returns_insights, get_returns_insights_stream, get_returns_dashboard, get_product_by_id, get_conversations_sessions
+from neurocom_backend.services.daraz_service import lazop_client, get_access_token, get_all_products, get_auth_code, create_new_product, get_category_attributes, migrate_images, get_migrated_images,migrate_image, get_all_categories, get_category_children, get_category_by_id, get_all_orders, get_all_orders_full, trace_order_by_id, get_product_reviews, get_all_reverse_orders_info, get_order_logistic_details, payout_statement, get_orders_with_items, get_order_by_id, get_all_products_reviews, scrape_product_reviews, get_reverse_orders_history, get_returns_insights, get_returns_insights_stream, get_returns_dashboard, get_product_by_id, get_conversations_sessions, get_seller_info, get_transaction_details, get_all_transactions, get_payout_analytics, calculate_fee_breakdown, reconcile_settlement, get_profit_analytics, get_cash_flow_analysis, get_financial_dashboard
 from neurocom_backend.utils.security import decrypt_value
 from neurocom_backend.utils.sse import sse_stream
 from fastapi.responses import RedirectResponse, JSONResponse, StreamingResponse
-from neurocom_backend.models.daraz_model import DarazProductCreate, DarazGetAllProductsResponse, DarazCategoryAttributesResponse, ReverseOrderInfo, ScrapedProductReviewsResponse, OrdersWithItemsResponse, ReturnsInsightsResponse, ReturnsDashboardResponse, DarazGetProductResponse, OrderWithItems, CatalogSearchRequest, ProductHuntRequest, CatalogSearchResponse, ProductHuntResponse
+from neurocom_backend.models.daraz_model import DarazProductCreate, DarazGetAllProductsResponse, DarazCategoryAttributesResponse, ReverseOrderInfo, ScrapedProductReviewsResponse, OrdersWithItemsResponse, ReturnsInsightsResponse, ReturnsDashboardResponse, DarazGetProductResponse, OrderWithItems, CatalogSearchRequest, ProductHuntRequest, CatalogSearchResponse, ProductHuntResponse, FinancialDashboardResponse, TransactionDetailsResponse, PayoutAnalyticsResponse, FeeBreakdownResponse, ProfitAnalyticsResponse, CashFlowEntry, ReconcileSettlementResponse
 from pydantic import BaseModel, model_validator
 from typing import Annotated, Optional, Any, List
 import os
@@ -325,9 +325,83 @@ async def dashboard_insights(
 async def get_payout(access_token: str = Depends(get_daraz_access_token)):
     return payout_statement(access_token)
 
+# --- FINANCIAL ANALYTICS ENDPOINTS ---
+
+@router.get('/financial/dashboard', response_model=FinancialDashboardResponse)
+async def financial_dashboard(
+    days: int = 30,
+    access_token: str = Depends(get_daraz_access_token)
+):
+    """Get comprehensive financial dashboard with all key metrics."""
+    return get_financial_dashboard(access_token, days)
+
+@router.get('/financial/transactions', response_model=TransactionDetailsResponse)
+async def get_transactions(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 100,
+    access_token: str = Depends(get_daraz_access_token)
+):
+    """Get detailed transaction list with pagination."""
+    return get_transaction_details(
+        access_token=access_token,
+        start_date=start_date,
+        end_date=end_date,
+        page=page,
+        page_size=page_size
+    )
+
+@router.get('/financial/payouts/analytics', response_model=PayoutAnalyticsResponse)
+async def payout_analytics(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    access_token: str = Depends(get_daraz_access_token)
+):
+    """Get payout analytics broken down by status."""
+    return get_payout_analytics(access_token, start_date, end_date)
+
+@router.get('/financial/fees/breakdown', response_model=FeeBreakdownResponse)
+async def fee_breakdown(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    access_token: str = Depends(get_daraz_access_token)
+):
+    """Get detailed fee breakdown."""
+    return calculate_fee_breakdown(access_token, start_date, end_date)
+
+@router.get('/financial/profit', response_model=ProfitAnalyticsResponse)
+async def profit_analytics(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    access_token: str = Depends(get_daraz_access_token)
+):
+    """Get profit and loss analytics for a given period."""
+    return get_profit_analytics(access_token, start_date, end_date)
+
+@router.get('/financial/cashflow', response_model=List[CashFlowEntry])
+async def cashflow_analysis(
+    days: int = 30,
+    access_token: str = Depends(get_daraz_access_token)
+):
+    """Get cash flow analysis showing daily inflows and outflows."""
+    return get_cash_flow_analysis(access_token, days)
+
+@router.get('/financial/settlement/reconcile/{payout_id}', response_model=ReconcileSettlementResponse)
+async def reconcile_payout(
+    payout_id: str,
+    access_token: str = Depends(get_daraz_access_token)
+):
+    """Reconcile a specific payout with its constituent orders."""
+    return reconcile_settlement(access_token, payout_id)
+
 @router.get('/conversations/sessions')
 async def conversations_sessions(access_token: str = Depends(get_daraz_access_token)):
     return get_conversations_sessions(access_token)
+
+@router.get('/get_seller_info')
+async def seller_info(access_token: str = Depends(get_daraz_access_token)):
+    return get_seller_info(access_token)
 
 # @router.get("/callback")
 # async def callback(request: Request):

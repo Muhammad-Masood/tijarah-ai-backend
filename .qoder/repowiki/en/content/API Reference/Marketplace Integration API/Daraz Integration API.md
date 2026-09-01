@@ -21,6 +21,9 @@
 - Integrated new service layer (daraz_catalog_service.py) for public catalog scraping
 - Enhanced model definitions for catalog operations including product filtering and niche analysis
 - Added intelligent product discovery capabilities with rating, review, and price-based filtering
+- **NEW**: Enhanced product models with primary_category_name field for improved category information
+- **NEW**: Implemented LRU-cached category name lookup system for efficient mapping of category IDs to names
+- **NEW**: Added automatic data enrichment function for seamless category name population
 
 ## Table of Contents
 1. Introduction
@@ -43,13 +46,13 @@ This document provides comprehensive API documentation for the Daraz marketplace
 - Payout statements and conversation sessions
 - Request/response schemas, error handling patterns, and rate limiting considerations specific to Daraz API constraints
 
-The integration uses a custom Lazop client to call Daraz APIs, with FastAPI routers exposing secure endpoints that require merchant authentication and a per-request encrypted Daraz access token header. The new catalog search functionality enables public product discovery without requiring merchant authentication.
+The integration uses a custom Lazop client to call Daraz APIs, with FastAPI routers exposing secure endpoints that require merchant authentication and a per-request encrypted Daraz access token header. The new catalog search functionality enables public product discovery without requiring merchant authentication. **Enhanced product models now include primary category names for improved user experience and better category information display.**
 
 ## Project Structure
 Key modules involved in the Daraz integration:
 - Routers: HTTP endpoints under /daraz, /auth, /reviews
 - Services: Business logic for Daraz API calls, caching, product normalization, review analysis, **and catalog scraping**
-- Models: Pydantic models defining request/response shapes
+- Models: Pydantic models defining request/response shapes with enhanced category information
 - Lazop SDK wrapper: Low-level HTTP signing and execution against Daraz endpoints
 - Security: JWT-based merchant auth and encrypted token handling
 
@@ -63,8 +66,9 @@ DarazRouter --> DarazService["Lazop calls + business logic"]
 DarazRouter --> CatalogService["Catalog scraping + product hunting"]
 ReviewsRouter --> ReviewsService["Scrape + analyze reviews"]
 DarazService --> LazopClient["LazopClient.execute()"]
+DarazService --> CategoryLookup["Category Name Lookup Cache"]
 CatalogService --> PublicAPI["Public Daraz Catalog API"]
-DarazService --> Models["Pydantic models"]
+DarazService --> Models["Pydantic models with enhanced categories"]
 DarazRouter --> Security["Decrypt access token"]
 DarazRouter --> Dependencies["Merchant resolution"]
 ```
@@ -97,13 +101,17 @@ DarazRouter --> Dependencies["Merchant resolution"]
   - POST /catalog/search: Search products by query with pagination and filtering
   - POST /catalog/hunt: Intelligent product discovery based on niches with quality filters
   - No authentication required for public catalog scraping
+- **NEW**: Enhanced Category Information System:
+  - Primary category names automatically populated in product responses
+  - LRU-cached category lookup for optimal performance
+  - Seamless integration with existing product retrieval endpoints
 - Daraz Access Token Resolution:
   - Header x-daraz-access-token is decrypted and validated against the authenticated merchant's connection
 - Lazop Client:
   - Signs requests using SHA-256 and app_key/app_secret; supports GET/POST and file uploads
 - Product Management:
   - Create products with category-aware attribute mapping and size chart enforcement
-  - Retrieve all products or by ID
+  - Retrieve all products or by ID with enhanced category information
   - Category tree and attributes retrieval
   - Image migration/upload to Daraz CDN
 - Orders and Logistics:
@@ -130,7 +138,7 @@ DarazRouter --> Dependencies["Merchant resolution"]
 - [reviews_service.py:59-304](file://neurocom_backend/services/reviews_service.py#L59-L304)
 
 ## Architecture Overview
-The system exposes REST endpoints that enforce merchant authentication and per-call Daraz authorization. The Daraz service layer handles API calls through a Lazop client, caches results where appropriate, normalizes payloads, and enforces domain rules (e.g., required size charts). **The new catalog service layer provides public product discovery capabilities without requiring merchant authentication.**
+The system exposes REST endpoints that enforce merchant authentication and per-call Daraz authorization. The Daraz service layer handles API calls through a Lazop client, caches results where appropriate, normalizes payloads, and enforces domain rules (e.g., required size charts). **The new catalog service layer provides public product discovery capabilities without requiring merchant authentication, while enhanced category information is automatically enriched in product responses.**
 
 ```mermaid
 sequenceDiagram
@@ -139,23 +147,29 @@ participant A as "Auth Router"
 participant D as "Daraz Router"
 participant S as "Daraz Service"
 participant CS as "Catalog Service"
+participant CL as "Category Lookup"
 participant L as "Lazop Client"
 participant PA as "Public API"
 participant DB as "Database"
 C->>A : POST /auth/login
 A-->>C : JWT (merchant)
+C->>D : GET /get_all_products<br/>Header : x-daraz-access-token
+D->>S : get_all_products(access_token)
+S->>CL : _category_name_lookup()
+CL->>DB : Fetch cached categories
+DB-->>CL : Category map
+CL-->>S : Category ID -> Name mapping
+S->>L : Execute product listing API
+L-->>S : Raw product data
+S->>S : _enrich_primary_category_names()
+S-->>D : Products with category names
+D-->>C : Enhanced product response
 C->>D : POST /catalog/search<br/>Body : {query, page, max_pages}
 D->>CS : scrape_products_by_category()
 CS->>PA : GET https : //www.daraz.pk/catalog/?ajax=true
 PA-->>CS : JSON response
 CS-->>D : Filtered products
 D-->>C : Catalog search results
-C->>D : POST /catalog/hunt<br/>Body : {niche, min_rating, min_reviews}
-D->>CS : hunt_products_for_niche()
-CS->>PA : Multiple catalog requests
-PA-->>CS : Product data
-CS-->>D : Recommended products
-D-->>C : Niche recommendations
 ```
 
 **Diagram sources**
@@ -163,6 +177,7 @@ D-->>C : Niche recommendations
 - [daraz_router.py:351-371](file://neurocom_backend/routers/daraz_router.py#L351-L371)
 - [daraz_catalog_service.py:109-235](file://neurocom_backend/services/daraz_catalog_service.py#L109-L235)
 - [daraz_service.py:55-100](file://neurocom_backend/services/daraz_service.py#L55-L100)
+- [daraz_service.py:290-326](file://neurocom_backend/services/daraz_service.py#L290-L326)
 - [base.py:140-204](file://neurocom_backend/python/lazop/base.py#L140-L204)
 - [security.py:31-43](file://neurocom_backend/utils/security.py#L31-L43)
 - [dependencies.py:17-43](file://neurocom_backend/dependencies.py#L17-L43)
@@ -208,6 +223,51 @@ Common errors:
 **Section sources**
 - [daraz_router.py:24-78](file://neurocom_backend/routers/daraz_router.py#L24-L78)
 - [security.py:31-43](file://neurocom_backend/utils/security.py#L31-L43)
+
+### **NEW**: Enhanced Category Information System
+**Updated** Added comprehensive category name enrichment system for improved product information display.
+
+Key features:
+- **Primary Category Names**: Products now include `primary_category_name` field alongside the existing `primary_category` ID
+- **LRU Caching**: Category lookup uses `@lru_cache(maxsize=1)` for optimal performance
+- **Automatic Enrichment**: Category names are automatically populated during product data processing
+- **Seamless Integration**: Works transparently with existing product retrieval endpoints
+
+Implementation details:
+- `_category_name_lookup()`: Builds a complete category ID to name mapping cache
+- `_enrich_primary_category_names()`: Populates category names in product responses
+- Applied to both single product and bulk product retrieval endpoints
+
+Performance benefits:
+- Single category tree fetch cached for entire application lifecycle
+- O(1) lookup time for category name resolution
+- Minimal overhead added to existing product operations
+
+**Section sources**
+- [daraz_service.py:290-326](file://neurocom_backend/services/daraz_service.py#L290-L326)
+- [daraz_model.py:193-202](file://neurocom_backend/models/daraz_model.py#L193-L202)
+- [daraz_service.py:85-108](file://neurocom_backend/services/daraz_service.py#L85-L108)
+
+#### Category Enrichment Flow
+```mermaid
+flowchart TD
+Start(["Product Data Received"]) --> CheckData{"Has 'data' field?"}
+CheckData --> |No| End["Return unchanged"]
+CheckData --> |Yes| BuildLookup["_category_name_lookup()"]
+BuildLookup --> FetchCategories["Fetch category tree once"]
+FetchCategories --> WalkTree["Walk category tree recursively"]
+WalkTree --> BuildMap["Build ID -> Name mapping"]
+BuildMap --> ProcessProducts{"Products array?"}
+ProcessProducts --> |Yes| IterateProducts["Iterate each product"]
+ProcessProducts --> |No| ProcessSingle["Process single product"]
+IterateProducts --> SetName["Set primary_category_name"]
+ProcessSingle --> SetName
+SetName --> Return["Return enriched data"]
+```
+
+**Diagram sources**
+- [daraz_service.py:290-326](file://neurocom_backend/services/daraz_service.py#L290-L326)
+- [daraz_service.py:85-108](file://neurocom_backend/services/daraz_service.py#L85-L108)
 
 ### **NEW**: Catalog Search and Product Hunting Endpoints
 Endpoints:
@@ -266,8 +326,8 @@ Sort --> Return["Return Recommendations"]
 
 ### Product Management Endpoints
 Endpoints:
-- GET /daraz/get_all_products: Returns all products with cached validation
-- GET /daraz/get_product_by_id?product_id=<id>: Returns a single product
+- GET /daraz/get_all_products: Returns all products with cached validation and **enhanced category information**
+- GET /daraz/get_product_by_id?product_id=<id>: Returns a single product **with primary category name**
 - GET /daraz/get_category_attributes?primary_category_id=<id>&language_code=en_US: Returns category-specific attribute definitions
 - POST /daraz/create_new_product: Creates a product with normalized attributes and enforced size chart if required
 - GET /daraz/get_all_categories: Returns category tree
@@ -283,6 +343,7 @@ Request/response schemas:
 - Product creation expects a payload with PrimaryCategory, Attributes, Skus, etc.
 - Category attributes define which fields are mandatory and their types
 - Image migration returns migrated URL and hash code
+- **Enhanced**: Product responses now include `primary_category_name` field for better UX
 
 Error handling:
 - Invalid category attributes response: 502
@@ -383,12 +444,13 @@ Rate limiting:
 - These endpoints are typically low-frequency; no special throttling implemented
 
 **Section sources**
-- [daraz_router.py:323-329](file://neurocom_backend/routers/daraz_router.py#L323-L329)
+- [daraz_router.py:323-329](file://neurocom_backend/routers/daraz_router.py#L323-329)
 
 ## Dependency Analysis
 - Routers depend on services for business logic and on security/dependencies for authentication
 - Services depend on Lazop client for API calls and on Pydantic models for validation
 - **NEW**: Catalog service depends on public HTTP requests to Daraz catalog endpoints
+- **NEW**: Category lookup system provides efficient mapping between category IDs and names
 - Lazop client handles signing and HTTP transport
 
 ```mermaid
@@ -398,10 +460,12 @@ DarazRouter --> CatalogService
 DarazRouter --> Security
 DarazRouter --> Dependencies
 DarazService --> LazopClient
+DarazService --> CategoryLookup["Category Name Lookup"]
 CatalogService --> PublicAPI
 DarazService --> Models
 ReviewsRouter --> ReviewsService
 ReviewsService --> Models
+CategoryLookup --> LRU["LRU Cache"]
 ```
 
 **Diagram sources**
@@ -425,6 +489,7 @@ ReviewsService --> Models
 ## Performance Considerations
 - Caching:
   - Product listings and reviews are cached using Redis-backed fingerprinting; volatile envelope keys like request_id and trace_id are stripped to avoid false cache misses
+  - **NEW**: Category name lookup uses LRU caching with `@lru_cache(maxsize=1)` for optimal performance
 - Concurrency:
   - Reviews fetching uses ThreadPoolExecutor to parallelize per-product review calls
 - Payload normalization:
@@ -436,6 +501,10 @@ ReviewsService --> Models
   - Maximum 50 pages per request to prevent excessive scraping
   - Optional session cookies for improved rate limits
   - Efficient parsing of filter data and subcategories
+- **NEW**: Category enrichment performance:
+  - Single category tree fetch cached for entire application lifecycle
+  - O(1) lookup time for category name resolution
+  - Minimal overhead added to existing product operations
 - Rate limiting:
   - No built-in rate limiter; implement client-side retries with exponential backoff on non-zero codes from Lazop responses
   - Avoid large batch operations during peak hours; use pagination and date filters
@@ -447,6 +516,10 @@ Common issues and resolutions:
 - Missing or invalid Daraz access token:
   - Ensure x-daraz-access-token header is present and corresponds to an active merchant connection
   - Decryption errors return 400; verify encryption key configuration
+- **NEW**: Category information issues:
+  - Missing category names: Verify category tree is accessible and contains expected data
+  - Performance issues: Check LRU cache effectiveness and category tree size
+  - Inconsistent category names: Ensure language settings match expected locale
 - **NEW**: Catalog scraping issues:
   - Network timeouts: Increase timeout settings or retry with different headers
   - Rate limiting: Implement exponential backoff and reduce request frequency
@@ -485,6 +558,6 @@ Error patterns:
 - [reviews_router.py:17-42](file://neurocom_backend/routers/reviews_router.py#L17-L42)
 
 ## Conclusion
-The Daraz integration provides a robust set of endpoints for OAuth-driven merchant authentication, product lifecycle management, **intelligent product discovery through catalog search and hunting**, order processing, review scraping and analysis, payouts, and conversations. The architecture emphasizes secure token handling, strict validation via Pydantic models, efficient caching and concurrency strategies, **and public product discovery capabilities without requiring merchant authentication**. For production deployments, implement client-side rate limiting and monitoring around Daraz API responses to handle throttling gracefully.
+The Daraz integration provides a robust set of endpoints for OAuth-driven merchant authentication, product lifecycle management, **intelligent product discovery through catalog search and hunting**, order processing, review scraping and analysis, payouts, and conversations. The architecture emphasizes secure token handling, strict validation via Pydantic models, efficient caching and concurrency strategies, **and public product discovery capabilities without requiring merchant authentication**. **Enhanced category information systems provide improved user experience with automatic category name enrichment and optimized performance through LRU caching**. For production deployments, implement client-side rate limiting and monitoring around Daraz API responses to handle throttling gracefully.
 
 [No sources needed since this section summarizes without analyzing specific files]

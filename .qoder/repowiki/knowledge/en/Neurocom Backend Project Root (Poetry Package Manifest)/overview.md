@@ -1,0 +1,1 @@
+Poetry-managed project root for the neurocom-backend FastAPI service, declaring dependencies, dev server entry point, and environment configuration for an AI-powered backend integrating OpenAI, Google GenAI, LangChain/LangGraph, ChromaDB, Redis, and SQLModel.

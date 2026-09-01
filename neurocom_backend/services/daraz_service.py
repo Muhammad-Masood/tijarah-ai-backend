@@ -1,3 +1,4 @@
+from functools import lru_cache
 from neurocom_backend.python.lazop.base import LazopClient, LazopRequest
 import os
 import re
@@ -27,15 +28,19 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 import concurrent.futures
 from neurocom_backend.utils.redis_cache import get_or_refresh, fingerprint
+from decimal import Decimal
 
-_:bool = load_dotenv()
+_: bool = load_dotenv()
 logger = logging.getLogger(__name__)
 
 
-lazop_client = LazopClient("https://api.daraz.pk/rest", os.getenv("DARAZ_APP_KEY"), os.getenv("DARAZ_APP_SECRET"))
+lazop_client = LazopClient("https://api.daraz.pk/rest",
+                           os.getenv("DARAZ_APP_KEY"), os.getenv("DARAZ_APP_SECRET"))
+
 
 def get_auth_code():
     pass
+
 
 def get_access_token(code: str):
     access_token_request = LazopRequest("/auth/token/create")
@@ -45,6 +50,7 @@ def get_access_token(code: str):
     access_token = access_token_response.body["access_token"]
     return access_token
 
+
 # Daraz stamps every response with a fresh request_id / _trace_id_ even when
 # the underlying product data hasn't changed at all. If we cached/compared
 # those, the background revalidation would treat *every* call as "changed"
@@ -52,16 +58,18 @@ def get_access_token(code: str):
 # call metadata, not product data, so they're dropped before hashing/caching.
 _VOLATILE_ENVELOPE_KEYS = ("request_id", "_trace_id_")
 
+
 def _fetch_all_products_raw(access_token: str) -> dict:
     """Live call to Daraz. Cheap-ish (one HTTP round trip) but returns the
     raw body as-is (HTML descriptions, volatile metadata included minus the
     always-different request_id/_trace_id_ keys) so change-detection can
     hash it without paying for HTML cleanup first."""
-    all_products_request = LazopRequest("/products/get",'GET')
+    all_products_request = LazopRequest("/products/get", 'GET')
     all_products_request.add_api_param("offset", "0")
     all_products_request.add_api_param("limit", "50")
     all_products_request.add_api_param('filter', 'all')
-    all_products_response = lazop_client.execute(all_products_request, access_token)
+    all_products_response = lazop_client.execute(
+        all_products_request, access_token)
     print("Products: ", all_products_response.body)
     body = all_products_response.body
     if isinstance(body, str):
@@ -70,8 +78,9 @@ def _fetch_all_products_raw(access_token: str) -> dict:
         body.pop(key, None)
     return body
 
+
 def _fetch_product_by_id_raw(product_id: int, access_token: str) -> dict:
-    product_request = LazopRequest("/product/item/get",'GET')
+    product_request = LazopRequest("/product/item/get", 'GET')
     product_request.add_api_param("item_id", str(product_id))
     product_response = lazop_client.execute(product_request, access_token)
     print("Products: ", product_response.body)
@@ -82,6 +91,7 @@ def _fetch_product_by_id_raw(product_id: int, access_token: str) -> dict:
         body.pop(key, None)
     return body
 
+
 def _clean_all_products_payload(raw_body: dict) -> dict:
     """Expensive step (BeautifulSoup HTML->text cleanup + full model
     validation). Only called when the raw payload's hash has actually
@@ -89,6 +99,7 @@ def _clean_all_products_payload(raw_body: dict) -> dict:
     _enrich_primary_category_names(raw_body)
     validated = DarazGetAllProductsResponse.model_validate(raw_body)
     return validated.model_dump(mode="json")
+
 
 def get_all_products(access_token: str) -> DarazGetAllProductsResponse:
     print("access_token: ", access_token)
@@ -102,10 +113,12 @@ def get_all_products(access_token: str) -> DarazGetAllProductsResponse:
     print("pr res: ", DarazGetAllProductsResponse.model_validate(body))
     return DarazGetAllProductsResponse.model_validate(body)
 
+
 def get_product_by_id(product_id: int, access_token: str) -> DarazGetProductResponse:
     body = _fetch_product_by_id_raw(product_id, access_token)
     _enrich_primary_category_names(body)
     return DarazGetProductResponse.model_validate(body)
+
 
 def get_all_products_reviews(access_token: str):
     all_products = get_all_products(access_token)
@@ -139,6 +152,7 @@ def get_all_products_reviews(access_token: str):
                 all_reviews.append(result)
     return [review for review in all_reviews if review["reviews"]]
 
+
 def get_time_range(days=7):
     end_time = datetime.utcnow()
     start_time = end_time - timedelta(days=days)
@@ -147,18 +161,21 @@ def get_time_range(days=7):
         int(start_time.timestamp() * 1000),
         int(end_time.timestamp() * 1000)
     )
-    
+
+
 def _fetch_product_reviews_raw(product_id: str, access_token: str) -> list:
     # start_time, end_time = get_time_range(days=9)
     # print(start_time, end_time)
     start_time = 1786690800
     end_time = 1786863600
-    product_reviews_request = LazopRequest("/review/seller/history/list",'GET')
+    product_reviews_request = LazopRequest(
+        "/review/seller/history/list", 'GET')
     product_reviews_request.add_api_param('item_id', product_id)
     product_reviews_request.add_api_param('start_time', start_time)
     product_reviews_request.add_api_param('end_time', end_time)
     product_reviews_request.add_api_param('current', '1')
-    product_reviews_response = lazop_client.execute(product_reviews_request, access_token)
+    product_reviews_response = lazop_client.execute(
+        product_reviews_request, access_token)
     data = product_reviews_response.body["data"]
     print("Product reviews history data: ", data)
     id_list = data.get("id_list", None)
@@ -166,17 +183,19 @@ def _fetch_product_reviews_raw(product_id: str, access_token: str) -> list:
       print("No reviews found")
       return []
     print("ID LIST: ", id_list)
-    reviews_request = LazopRequest('/review/seller/list/v2','GET')
+    reviews_request = LazopRequest('/review/seller/list/v2', 'GET')
     reviews_request.add_api_param('id_list', json.dumps(id_list))
     reviews_response = lazop_client.execute(reviews_request, access_token)
-    print("Reviews response: ",reviews_response.body)
+    print("Reviews response: ", reviews_response.body)
     return reviews_response.body["data"]["review_list"]
+
 
 def get_product_reviews(product_id: str, access_token: str):
     cache_key = f"daraz:product_reviews:{product_id}:{fingerprint(access_token)}"
     return get_or_refresh(
         cache_key,
-        fetch_raw_fn=lambda: _fetch_product_reviews_raw(product_id, access_token),
+        fetch_raw_fn=lambda: _fetch_product_reviews_raw(
+            product_id, access_token),
         enable_background_refresh=False,
     )
 
@@ -191,16 +210,21 @@ def get_product_reviews(product_id: str, access_token: str):
 # headless browser: https://my.daraz.pk/pdp/review/getReviewList
 # ---------------------------------------------------------------------------
 
+
 _DARAZ_REVIEW_LIST_URL = "https://my.daraz.pk/pdp/review/getReviewList"
 _ITEM_ID_RE = re.compile(r"[/-]i(\d+)(?:-s\d+)?\.html")
+
 
 def _extract_item_id_from_url(product_url: str) -> str:
     match = _ITEM_ID_RE.search(product_url)
     if not match:
-        raise ValueError(f"Could not extract item id from Daraz product URL: {product_url}")
+        raise ValueError(
+            f"Could not extract item id from Daraz product URL: {product_url}")
     return match.group(1)
 
+
 _MAX_REVIEW_PAGES = 200
+
 
 def _fetch_all_scraped_reviews_raw(item_id: str) -> dict:
     page_size = 50
@@ -215,7 +239,8 @@ def _fetch_all_scraped_reviews_raw(item_id: str) -> dict:
     for page_no in range(1, _MAX_REVIEW_PAGES + 1):
         response = requests.get(
             _DARAZ_REVIEW_LIST_URL,
-            params={"itemId": item_id, "pageSize": page_size, "filter": 0, "sort": 0, "pageNo": page_no},
+            params={"itemId": item_id, "pageSize": page_size,
+                "filter": 0, "sort": 0, "pageNo": page_no},
             headers={"User-Agent": "Mozilla/5.0"},
             timeout=20,
         )
@@ -235,6 +260,7 @@ def _fetch_all_scraped_reviews_raw(item_id: str) -> dict:
         "average_rating": ratings.get("average"),
     }
 
+
 def _clean_scraped_reviews_payload(raw: dict) -> dict:
     validated = ScrapedProductReviewsResponse.model_validate({
         "item_id": raw["item_id"],
@@ -243,6 +269,7 @@ def _clean_scraped_reviews_payload(raw: dict) -> dict:
         "reviews": raw["items"],
     })
     return validated.model_dump(mode="json")
+
 
 def scrape_product_reviews(product_url: str) -> ScrapedProductReviewsResponse:
     item_id = _extract_item_id_from_url(product_url)
@@ -255,6 +282,7 @@ def scrape_product_reviews(product_url: str) -> ScrapedProductReviewsResponse:
     )
     return ScrapedProductReviewsResponse.model_validate(body)
 
+
 def get_category_attributes(category_id: str, access_token: str, language_code: str = "en_US"):
     request = LazopRequest("/category/attributes/get", "GET")
     request.add_api_param("primary_category_id", category_id)
@@ -265,16 +293,17 @@ def get_category_attributes(category_id: str, access_token: str, language_code: 
         try:
             body = json.loads(body)
         except json.JSONDecodeError as exc:
-            raise HTTPException(status_code=502, detail="Daraz returned an invalid category-attributes response") from exc
+            raise HTTPException(
+                status_code=502, detail="Daraz returned an invalid category-attributes response") from exc
     return body
-  
-from functools import lru_cache
+
 
 @lru_cache(maxsize=1)
 def get_all_categories():
     request = LazopRequest("/category/tree/get", "GET")
     response = lazop_client.execute(request)
     return response.body["data"]
+
 
 def find_category(categories, category_id: int):
     for category in categories:
@@ -328,7 +357,8 @@ def _enrich_primary_category_names(body: dict) -> None:
 def get_category_by_id(category_id: int):
     all_categories = get_all_categories()
     return find_category(all_categories, category_id)
-      
+
+
 def get_category_children(category_id: int):
     all_categories_request = LazopRequest("/category/tree/get", "GET")
     response = lazop_client.execute(all_categories_request)
@@ -371,7 +401,7 @@ def _is_daraz_migrate_supported_url(image_url: str) -> bool:
 
 
 def _content_type_to_filename(content_type: str, fallback_url: str) -> str:
-    ext = { "image/jpeg": ".jpg", "image/png": ".png" }.get(content_type.lower())
+    ext = {"image/jpeg": ".jpg", "image/png": ".png"}.get(content_type.lower())
     if ext:
         return f"product{ext}"
     from urllib.parse import urlparse
@@ -389,7 +419,8 @@ def _validate_daraz_image(content: bytes, content_type: str, filename: str) -> t
             detail="Daraz accepts only JPEG and PNG images (1 MB max). Re-upload as JPG or PNG.",
         )
     if len(content) > _DARAZ_MAX_IMAGE_BYTES:
-        raise HTTPException(status_code=413, detail="Image exceeds Daraz 1 MB limit")
+        raise HTTPException(
+            status_code=413, detail="Image exceeds Daraz 1 MB limit")
     return content, _content_type_to_filename(normalized, filename)
 
 
@@ -398,12 +429,15 @@ def _download_image_for_daraz(image_url: str) -> tuple[bytes, str]:
         response = requests.get(image_url, timeout=(10, 30))
         response.raise_for_status()
     except requests.RequestException as exc:
-        raise HTTPException(status_code=502, detail=f"Could not download image: {exc}") from exc
+        raise HTTPException(
+            status_code=502, detail=f"Could not download image: {exc}") from exc
 
-    content_type = (response.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+    content_type = (response.headers.get("Content-Type")
+                    or "").split(";", 1)[0].strip().lower()
     content = response.content
     if not content:
-        raise HTTPException(status_code=400, detail="Downloaded image is empty")
+        raise HTTPException(
+            status_code=400, detail="Downloaded image is empty")
     return _validate_daraz_image(content, content_type, image_url)
 
 
@@ -413,7 +447,8 @@ def _load_image_for_daraz(*, image_url: str | None, storage_path: str | None) ->
         return _validate_daraz_image(content, content_type, storage_path)
 
     if not image_url:
-        raise HTTPException(status_code=400, detail="storage_path or image_url is required")
+        raise HTTPException(
+            status_code=400, detail="storage_path or image_url is required")
 
     supabase_path = parse_supabase_object_path(image_url)
     if supabase_path:
@@ -427,14 +462,16 @@ def _parse_daraz_image_response(body: Any) -> dict:
     if isinstance(body, str):
         body = json.loads(body)
     if not isinstance(body, dict):
-        raise HTTPException(status_code=502, detail="Daraz returned an invalid image response")
+        raise HTTPException(
+            status_code=502, detail="Daraz returned an invalid image response")
     return body
 
 
 def upload_image(access_token: str, image_bytes: bytes, filename: str = "product.jpg") -> dict:
     """Upload image bytes via Daraz /image/upload (local upload)."""
     if len(image_bytes) > _DARAZ_MAX_IMAGE_BYTES:
-        raise HTTPException(status_code=413, detail="Image exceeds Daraz 1 MB limit")
+        raise HTTPException(
+            status_code=413, detail="Image exceeds Daraz 1 MB limit")
 
     lower = filename.lower()
     if lower.endswith((".jpg", ".jpeg")):
@@ -442,7 +479,8 @@ def upload_image(access_token: str, image_bytes: bytes, filename: str = "product
     elif lower.endswith(".png"):
         content_type = "image/png"
     else:
-        raise HTTPException(status_code=415, detail="Daraz accepts only JPEG and PNG images")
+        raise HTTPException(
+            status_code=415, detail="Daraz accepts only JPEG and PNG images")
 
     request = LazopRequest("/image/upload")
     print(filename, image_bytes, content_type)
@@ -466,7 +504,8 @@ def migrate_image(
     /image/upload after server-side download.
     """
     if storage_path or not image_url or not _is_daraz_migrate_supported_url(image_url):
-        image_bytes, filename = _load_image_for_daraz(image_url=image_url, storage_path=storage_path)
+        image_bytes, filename = _load_image_for_daraz(
+            image_url=image_url, storage_path=storage_path)
         return upload_image(access_token, image_bytes, filename)
 
     request = LazopRequest("/image/migrate")
@@ -484,17 +523,20 @@ def migrate_image(
     body = _parse_daraz_image_response(response.body)
     print("body: ", body)
     if str(body.get("code", "")) == "302":
-        image_bytes, filename = _load_image_for_daraz(image_url=image_url, storage_path=storage_path)
+        image_bytes, filename = _load_image_for_daraz(
+            image_url=image_url, storage_path=storage_path)
         return upload_image(access_token, image_bytes, filename)
-    return body    
+    return body
+
+
 def migrate_images(access_token: str, images_urls: list[str]):
-  
+
   image_urls = [
     "https://fakestoreapi.com/img/71li-ujtlUL._AC_UX679_t.png",
     "https://fakestoreapi.com/img/71YXzeOuslL._AC_UY879_t.png"
     ]
   request = LazopRequest('/images/migrate')
-  
+
   xml_payload = """
   <?xml version="1.0" encoding="UTF-8" ?>
 <Request>
@@ -511,7 +553,8 @@ def migrate_images(access_token: str, images_urls: list[str]):
         return response.body
   else:
     return json.loads(response.body)
-  
+
+
 def get_migrated_images(access_token: str, batch_id: str):
     request = LazopRequest('/image/response/get', 'GET')
     request.add_api_param('batch_id', batch_id)
@@ -578,16 +621,19 @@ def _load_category_attribute_sets(
         try:
             body = get_category_attributes(str(category_id), access_token)
         except Exception:
-            logger.warning("Could not load category attributes for %s", category_id, exc_info=True)
+            logger.warning(
+                "Could not load category attributes for %s", category_id, exc_info=True)
             body = {}
     if isinstance(body, dict):
-        sale_props, sku_attrs, product_attrs = _parse_category_attribute_sets(body)
+        sale_props, sku_attrs, product_attrs = _parse_category_attribute_sets(
+            body)
         if sale_props or sku_attrs or product_attrs:
             return sale_props, sku_attrs, product_attrs, body
     return frozenset({"size"}), frozenset(), frozenset({"color_family", "color"}), body or {}
 
 
-_SIZE_CHART_ATTR_NAMES: frozenset[str] = frozenset({"size_chart", "Size_Chart_Image"})
+_SIZE_CHART_ATTR_NAMES: frozenset[str] = frozenset(
+    {"size_chart", "Size_Chart_Image"})
 
 
 def _category_requires_size_chart(category_body: dict, sale_prop_names: frozenset[str]) -> bool:
@@ -626,12 +672,14 @@ def _resolve_daraz_image_url(
             return image_url
         response = migrate_image(access_token, image_url=image_url)
     else:
-        raise HTTPException(status_code=422, detail="size_chart image URL or storage path is required")
+        raise HTTPException(
+            status_code=422, detail="size_chart image URL or storage path is required")
 
     migrated_url = _extract_migrated_image_url(response)
     if migrated_url:
         return migrated_url
-    message = response.get("message") or response.get("detail") or response.get("code")
+    message = response.get("message") or response.get(
+        "detail") or response.get("code")
     raise HTTPException(
         status_code=502,
         detail=f"Daraz image migration failed for size chart: {message or 'no migrated URL returned'}",
@@ -656,9 +704,11 @@ def _ensure_size_chart(
         or product.get("size_chart")
         or product.get("size_chart_url")
     )
-    chart_storage_path = product.get("size_chart_storage_path") or product_attributes.get("size_chart_storage_path")
+    chart_storage_path = product.get(
+        "size_chart_storage_path") or product_attributes.get("size_chart_storage_path")
     if not chart_url and not chart_storage_path and skus:
-        chart_url = skus[0].get("Size_Chart_Image") or skus[0].get("size_chart")
+        chart_url = skus[0].get(
+            "Size_Chart_Image") or skus[0].get("size_chart")
         chart_storage_path = skus[0].get("size_chart_storage_path")
 
     if not chart_url and not chart_storage_path:
@@ -698,7 +748,8 @@ def _sale_prop_order(names: set[str]) -> list[str]:
     return sorted(names, key=lambda n: (priority.get(n, 2), n))
 
 
-_IMAGE_CAPABLE_SALE_PROPS: frozenset[str] = frozenset({"color_family", "color"})
+_IMAGE_CAPABLE_SALE_PROPS: frozenset[str] = frozenset(
+    {"color_family", "color"})
 
 
 def _build_variation_xml(sale_props_by_name: dict[str, set[str]], *, sku_has_images: bool) -> str:
@@ -712,7 +763,8 @@ def _build_variation_xml(sale_props_by_name: dict[str, set[str]], *, sku_has_ima
             and name in _IMAGE_CAPABLE_SALE_PROPS
             and sku_has_images
         )
-        options_xml = "".join(f"<option>{escape(opt)}</option>" for opt in options)
+        options_xml = "".join(
+            f"<option>{escape(opt)}</option>" for opt in options)
         blocks.append(
             f"<Variation{idx}>"
             f"<name>{escape(name)}</name>"
@@ -729,7 +781,8 @@ def _build_sale_prop_xml(sale_props: dict[str, str], *, prop_order: list[str]) -
         return ""
     ordered = [name for name in prop_order if name in sale_props]
     ordered.extend(name for name in sorted(sale_props) if name not in ordered)
-    inner = "".join(f"<{name}>{escape(sale_props[name])}</{name}>" for name in ordered)
+    inner = "".join(
+        f"<{name}>{escape(sale_props[name])}</{name}>" for name in ordered)
     return f"<saleProp>{inner}</saleProp>"
 
 
@@ -755,7 +808,8 @@ def _normalize_create_product_payload(
     attrs = dict(product.get("Attributes") or {})
     skus = [dict(sku) for sku in (product.get("Skus") or [])]
     if not skus:
-        raise HTTPException(status_code=422, detail="At least one SKU is required")
+        raise HTTPException(
+            status_code=422, detail="At least one SKU is required")
 
     for field in migrate_to_sku_names:
         value = attrs.pop(field, None)
@@ -802,7 +856,8 @@ def create_new_product(access_token: str, product: Any):
       access_token,
   )
   migrate_to_sku_names = _SKU_OPERATIONAL_FIELDS | sale_prop_names | sku_attr_names
-  product = _normalize_create_product_payload(product_dict, migrate_to_sku_names=migrate_to_sku_names)
+  product = _normalize_create_product_payload(
+      product_dict, migrate_to_sku_names=migrate_to_sku_names)
   title = str(product.get("Title") or "").strip()
   if not title:
       raise HTTPException(status_code=422, detail="Product title is required")
@@ -841,12 +896,15 @@ def create_new_product(access_token: str, product: Any):
         and attr_name not in exclude_from_product_attrs
         and _is_valid_xml_tag_name(attr_name)
   ])
-  images_xml = "".join([f"<Image>{escape(str(img))}</Image>" for img in product["Images"]])
-  sale_props_by_name = _collect_sale_props_by_name(skus, sale_prop_names=sale_prop_names)
+  images_xml = "".join(
+      [f"<Image>{escape(str(img))}</Image>" for img in product["Images"]])
+  sale_props_by_name = _collect_sale_props_by_name(
+      skus, sale_prop_names=sale_prop_names)
   sale_prop_order = _sale_prop_order(set(sale_props_by_name))
   sku_has_images = any(sku.get("Images") for sku in skus)
   sku_images_enabled = bool(sale_prop_names & _IMAGE_CAPABLE_SALE_PROPS)
-  variation_xml = _build_variation_xml(sale_props_by_name, sku_has_images=sku_has_images)
+  variation_xml = _build_variation_xml(
+      sale_props_by_name, sku_has_images=sku_has_images)
   skus_xml = ""
   for sku in skus:
     sku_images_xml = ""
@@ -855,14 +913,16 @@ def create_new_product(access_token: str, product: Any):
             f"<Image>{escape(str(img))}</Image>" for img in sku.get("Images", [])
         ])
     extra_fields = _extract_sku_extra_fields(sku)
-    sale_props = {name: value for name, value in extra_fields.items() if name in sale_prop_names}
+    sale_props = {name: value for name,
+        value in extra_fields.items() if name in sale_prop_names}
     sku_attrs_xml = "".join(
         f"<{name}>{escape(value)}</{name}>"
         for name, value in sorted(
             (name, value) for name, value in extra_fields.items() if name in sku_attr_names
         )
     )
-    sale_props_xml = _build_sale_prop_xml(sale_props, prop_order=sale_prop_order)
+    sale_props_xml = _build_sale_prop_xml(
+        sale_props, prop_order=sale_prop_order)
     skus_xml += f"""
         <Sku>
             <SellerSku>{escape(str(sku['SellerSku']))}</SellerSku>
@@ -890,7 +950,7 @@ def create_new_product(access_token: str, product: Any):
         <Skus>{skus_xml}</Skus>
       </Product>
     </Request>"""
-    
+
   logger.info(
       "Daraz create payload: category_id=%s title_length=%s attributes=%s sku_fields=%s sale_props=%s sku_attrs=%s product_attrs=%s image_count=%s",
       product["PrimaryCategory"],
@@ -919,12 +979,13 @@ def create_new_product(access_token: str, product: Any):
   try:
       return json.loads(response.body)
   except (TypeError, json.JSONDecodeError) as exc:
-      raise HTTPException(status_code=502, detail="Daraz returned an invalid product creation response") from exc
-  
+      raise HTTPException(
+          status_code=502, detail="Daraz returned an invalid product creation response") from exc
+
     #  <Image>https://static-01.daraz.pk/p/97545b9b42e3a4781ff7c98c68002352.png</Image>
     #           <Image>https://static-01.daraz.pk/p/97545b9b42e3a4781ff7c98c68002352.png</Image>
     # <brand>Remark</brand>
-              
+
 # def create_new_product(access_token: str, product: DarazProductCreate):
 #     create_product_request = LazopRequest('/product/create')
 #     xml_payload = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -970,24 +1031,27 @@ def create_new_product(access_token: str, product: Any):
 #             </Skus>
 #           </Product>
 #         </Request>"""
-        
+
 #     create_product_request.add_api_param('payload', xml_payload)
 #     response = lazop_client.execute(create_product_request, access_token)
 #     return JSONResponse({"type": response.type, "body": response.body})
 
 
 def get_all_orders(access_token: str, include_canceled: bool = False):
-    all_orders_request = LazopRequest("/orders/get",'GET')
+    all_orders_request = LazopRequest("/orders/get", 'GET')
     all_orders_request.add_api_param("offset", "0")
     all_orders_request.add_api_param("limit", "10")
     all_orders_request.add_api_param("sort_by", "updated_at")
     all_orders_request.add_api_param('sort_direction', 'DESC')
-    all_orders_request.add_api_param('created_after', '2017-02-10T09:00:00+08:00')
-    all_orders_response = lazop_client.execute(all_orders_request, access_token)
+    all_orders_request.add_api_param(
+        'created_after', '2017-02-10T09:00:00+08:00')
+    all_orders_response = lazop_client.execute(
+        all_orders_request, access_token)
     print("Orders: ", all_orders_response.body)
     data = all_orders_response.body["data"]
     if not include_canceled:
-        orders = [o for o in data.get("orders", []) if "canceled" not in o.get("statuses", [])]
+        orders = [o for o in data.get(
+            "orders", []) if "canceled" not in o.get("statuses", [])]
         data = {**data, "orders": orders, "count": len(orders)}
     return data
 
@@ -1000,15 +1064,18 @@ def get_all_orders(access_token: str, include_canceled: bool = False):
 # the last order in the page, until the running total reaches countTotal.
 # ---------------------------------------------------------------------------
 
+
 def _advance_created_after(created_at: str) -> str:
     """Daraz's created_at *response* field looks like
     '2026-08-20 16:32:40 +0800'; the created_after *request* param instead
     expects '2026-08-20T16:32:40+08:00' (matches the seed value used by
     get_all_orders). Bumped by one second so the boundary order — the last
     one in the page just fetched — isn't re-fetched forever."""
-    dt = datetime.strptime(created_at, "%Y-%m-%d %H:%M:%S %z") + timedelta(seconds=1)
+    dt = datetime.strptime(
+        created_at, "%Y-%m-%d %H:%M:%S %z") + timedelta(seconds=1)
     iso = dt.strftime("%Y-%m-%dT%H:%M:%S%z")  # e.g. ...+0800
     return f"{iso[:-2]}:{iso[-2:]}"  # -> ...+08:00
+
 
 def _fetch_all_orders_raw(access_token: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> list:
     page_size = 100
@@ -1047,6 +1114,7 @@ def _fetch_all_orders_raw(access_token: str, start_date: Optional[str] = None, e
 
     return all_orders
 
+
 def get_all_orders_full(
     access_token: str,
     include_canceled: bool = False,
@@ -1056,7 +1124,8 @@ def get_all_orders_full(
     cache_key = f"daraz:all_orders_full:{fingerprint(access_token)}:{start_date or 'any'}:{end_date or 'any'}"
     all_orders = get_or_refresh(
         cache_key,
-        fetch_raw_fn=lambda: _fetch_all_orders_raw(access_token, start_date, end_date),
+        fetch_raw_fn=lambda: _fetch_all_orders_raw(
+            access_token, start_date, end_date),
         enable_background_refresh=False,
     )
     orders = all_orders if include_canceled else [
@@ -1064,20 +1133,25 @@ def get_all_orders_full(
     ]
     return {"orders": orders, "count": len(orders)}
 
+
 def get_order_detail(order_id: str, access_token: str):
-    order_detail_request = LazopRequest('/order/items/get','GET')
+    order_detail_request = LazopRequest('/order/items/get', 'GET')
     order_detail_request.add_api_param('order_id', order_id)
-    order_detail_response = lazop_client.execute(order_detail_request, access_token)
+    order_detail_response = lazop_client.execute(
+        order_detail_request, access_token)
     print("Order detail: ", order_detail_response.body)
     return order_detail_response.body
-  
+
+
 def get_orders_details(order_ids: list[str], access_token: str):
   print("Order IDs: ", order_ids)
-  orders_details_request = LazopRequest('/orders/items/get','GET')
+  orders_details_request = LazopRequest('/orders/items/get', 'GET')
   orders_details_request.add_api_param('order_ids', f"{order_ids}")
-  orders_details_response = lazop_client.execute(orders_details_request, access_token)
+  orders_details_response = lazop_client.execute(
+      orders_details_request, access_token)
   print("Orders details: ", orders_details_response.body)
   return orders_details_response.body["data"]
+
 
 def get_order_by_id(order_id: str, access_token: str) -> dict:
     """Single-order counterpart to get_orders_with_items: /order/get for the
@@ -1093,15 +1167,19 @@ def get_order_by_id(order_id: str, access_token: str) -> dict:
     numeric_order_id = order["order_id"]
     details = get_orders_details([numeric_order_id], access_token)
     order_items = next(
-        (d["order_items"] for d in details if d["order_id"] == numeric_order_id),
+        (d["order_items"]
+         for d in details if d["order_id"] == numeric_order_id),
         []
     )
     return {**order, "items": order_items}
 
+
 _ORDER_DETAILS_BATCH_SIZE = 50
 
+
 def _fetch_orders_with_items_raw(access_token: str, start_date: Optional[str], end_date: Optional[str]) -> list:
-    orders_res = get_all_orders_full(access_token, start_date=start_date, end_date=end_date)
+    orders_res = get_all_orders_full(
+        access_token, start_date=start_date, end_date=end_date)
     orders = orders_res.get("orders", [])
     if not orders:
         return []
@@ -1131,6 +1209,7 @@ def _fetch_orders_with_items_raw(access_token: str, start_date: Optional[str], e
 
     return merged_orders
 
+
 def get_orders_with_items(
     access_token: str,
     product_sku_id: Optional[str] = None,
@@ -1140,7 +1219,8 @@ def get_orders_with_items(
     cache_key = f"daraz:orders_with_items:{fingerprint(access_token)}:{start_date or 'any'}:{end_date or 'any'}"
     merged_orders = get_or_refresh(
         cache_key,
-        fetch_raw_fn=lambda: _fetch_orders_with_items_raw(access_token, start_date, end_date),
+        fetch_raw_fn=lambda: _fetch_orders_with_items_raw(
+            access_token, start_date, end_date),
         enable_background_refresh=False,
     )
 
@@ -1151,7 +1231,7 @@ def get_orders_with_items(
         ]
 
     return {"orders": merged_orders, "count": len(merged_orders)}
-  
+
 # def get_order_logistic_details(order_id: str, access_token: str):
 #   order_logistic_request = LazopRequest('/order/logistic/get')
 #   order_logistic_request.add_api_param('order_id', order_id)
@@ -1170,6 +1250,7 @@ def get_orders_with_items(
 #   print("Package history details: ", order_package_history_response.body)
 #   return order_package_history_response.body
 
+
 def get_order_logistic_details(order_id: str, access_token: str):
     # Step 1: Fetch logistic details
     order_logistic_request = LazopRequest('/order/logistic/get')
@@ -1177,12 +1258,14 @@ def get_order_logistic_details(order_id: str, access_token: str):
     order_logistic_request.add_api_param('package_id_list', '[]')
     order_logistic_request.add_api_param('locale', 'en')
 
-    order_logistic_response = lazop_client.execute(order_logistic_request, access_token)
+    order_logistic_response = lazop_client.execute(
+        order_logistic_request, access_token)
     print("Order Logistic Details: ", order_logistic_response.body)
 
     try:
         # body = json.loads(order_logistic_response.body)
-        modules = order_logistic_response.body.get("data", {}).get("module", [])
+        modules = order_logistic_response.body.get(
+            "data", {}).get("module", [])
         print("Modules: ", modules)
         if not modules:
             print("No modules found in logistic details")
@@ -1204,11 +1287,14 @@ def get_order_logistic_details(order_id: str, access_token: str):
         return {}
 
     # Step 2: Fetch package history
-    order_package_history_request = LazopRequest("/logistics/epis/packages/history", 'GET')
+    order_package_history_request = LazopRequest(
+        "/logistics/epis/packages/history", 'GET')
     order_package_history_request.add_api_param('includeTimeline', 'true')
-    order_package_history_request.add_api_param('trackingNumber', order_tracking_number)
+    order_package_history_request.add_api_param(
+        'trackingNumber', order_tracking_number)
 
-    order_package_history_response = lazop_client.execute(order_package_history_request, access_token)
+    order_package_history_response = lazop_client.execute(
+        order_package_history_request, access_token)
     print("Package history details: ", order_package_history_response.body)
 
     # Return parsed JSON instead of raw string (optional)
@@ -1217,20 +1303,24 @@ def get_order_logistic_details(order_id: str, access_token: str):
     except:
         return {"raw": order_package_history_response.body}
 
+
 def trace_order_by_id(order_id: str, access_token: str):
-    trace_order_request = LazopRequest("/logistic/order/trace",'GET')
+    trace_order_request = LazopRequest("/logistic/order/trace", 'GET')
     # trace_order_request = LazopRequest("/logistics/epis/packages/history",'GET')
     trace_order_request.add_api_param("order_id", order_id)
     trace_order_request.add_api_param('locale', 'en')
     trace_order_request.add_api_param('ofcPackageIdList', '[]')
-    track_order_response = lazop_client.execute(trace_order_request, access_token)
+    track_order_response = lazop_client.execute(
+        trace_order_request, access_token)
     print("Track Order Data: ", track_order_response.body)
     return track_order_response.body
+
 
 def _date_to_epoch_millis(date_str: str, end_of_day: bool = False) -> int:
     time_part = "23:59:59" if end_of_day else "00:00:00"
     dt = datetime.strptime(f"{date_str} {time_part}", "%Y-%m-%d %H:%M:%S")
     return int(dt.timestamp() * 1000)
+
 
 def get_reverse_orders(access_token: str, start_date: Optional[str] = None, end_date: Optional[str] = None):
     page_no = 1
@@ -1239,14 +1329,18 @@ def get_reverse_orders(access_token: str, start_date: Optional[str] = None, end_
     total = None
 
     while total is None or page_size * (page_no - 1) < total:
-        reverse_orders_request = LazopRequest("/reverse/getreverseordersforseller", 'GET')
+        reverse_orders_request = LazopRequest(
+            "/reverse/getreverseordersforseller", 'GET')
         reverse_orders_request.add_api_param('page_no', str(page_no))
         reverse_orders_request.add_api_param('page_size', str(page_size))
         if start_date:
-            reverse_orders_request.add_api_param('ReverseOrderLineTimeRangeStart', str(_date_to_epoch_millis(start_date)))
+            reverse_orders_request.add_api_param(
+                'ReverseOrderLineTimeRangeStart', str(_date_to_epoch_millis(start_date)))
         if end_date:
-            reverse_orders_request.add_api_param('ReverseOrderLineTimeRangeEnd', str(_date_to_epoch_millis(end_date, end_of_day=True)))
-        reverse_orders_response = lazop_client.execute(reverse_orders_request, access_token)
+            reverse_orders_request.add_api_param('ReverseOrderLineTimeRangeEnd', str(
+                _date_to_epoch_millis(end_date, end_of_day=True)))
+        reverse_orders_response = lazop_client.execute(
+            reverse_orders_request, access_token)
         print("Reverse orders: ", reverse_orders_response.body)
         result = reverse_orders_response.body["result"]
         total = result["total"]
@@ -1255,21 +1349,29 @@ def get_reverse_orders(access_token: str, start_date: Optional[str] = None, end_
 
     return [item for item in all_items if item.get("request_type") != "CANCEL"]
 
+
 def get_reverse_order_info(reverse_order_id: str, access_token: str):
-    reverse_order_request = LazopRequest("/order/reverse/return/detail/list",'GET')
+    reverse_order_request = LazopRequest(
+        "/order/reverse/return/detail/list", 'GET')
     reverse_order_request.add_api_param('reverse_order_id', reverse_order_id)
-    reverse_order_response = lazop_client.execute(reverse_order_request, access_token)
+    reverse_order_response = lazop_client.execute(
+        reverse_order_request, access_token)
     print("Reverse orders info: ", reverse_order_response.body)
     return reverse_order_response.body
 
+
 def get_reverse_orders_history(reverse_order_line_id: int, access_token: str):
-    reverse_order_request = LazopRequest("/order/reverse/return/history/list",'GET')
-    reverse_order_request.add_api_param('reverse_order_line_id', str(reverse_order_line_id))
+    reverse_order_request = LazopRequest(
+        "/order/reverse/return/history/list", 'GET')
+    reverse_order_request.add_api_param(
+        'reverse_order_line_id', str(reverse_order_line_id))
     reverse_order_request.add_api_param('page_size', '10')
     reverse_order_request.add_api_param('page_number', '1')
-    reverse_order_response = lazop_client.execute(reverse_order_request, access_token)
+    reverse_order_response = lazop_client.execute(
+        reverse_order_request, access_token)
     print("Reverse orders history info: ", reverse_order_response.body)
     return reverse_order_response.body
+
 
 def _fetch_all_reverse_orders_info_raw(access_token: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> list:
   reverse_orders = get_reverse_orders(access_token, start_date, end_date)
@@ -1277,17 +1379,21 @@ def _fetch_all_reverse_orders_info_raw(access_token: str, start_date: Optional[s
   reverse_orders_info = []
   for reverse_order in reverse_orders:
     print(reverse_order)
-    info = get_reverse_order_info(reverse_order['reverse_order_id'], access_token)
+    info = get_reverse_order_info(
+        reverse_order['reverse_order_id'], access_token)
     print(info)
     reverse_orders_info.append(info)
-  print("reverse orders info: ",reverse_orders_info )
+  print("reverse orders info: ", reverse_orders_info)
   return reverse_orders_info
+
 
 def _clean_reverse_orders_info_payload(raw_items: list) -> list:
   return [
-    ReverseOrderInfo.model_validate(item).model_dump(mode="json", by_alias=True)
+    ReverseOrderInfo.model_validate(
+        item).model_dump(mode="json", by_alias=True)
     for item in raw_items
   ]
+
 
 def _in_product_scope(
     candidate_product_id: Optional[int],
@@ -1305,6 +1411,7 @@ def _in_product_scope(
         return candidate_sku_id is not None and str(candidate_sku_id) == str(product_sku_id)
     return candidate_product_id is not None and candidate_product_id == product_id
 
+
 def get_all_reverse_orders_info(
     access_token: str,
     product_id: Optional[int] = None,
@@ -1315,7 +1422,8 @@ def get_all_reverse_orders_info(
   cache_key = f"daraz:reverse_orders_info:{fingerprint(access_token)}:{start_date or 'any'}:{end_date or 'any'}"
   body = get_or_refresh(
     cache_key,
-    fetch_raw_fn=lambda: _fetch_all_reverse_orders_info_raw(access_token, start_date, end_date),
+    fetch_raw_fn=lambda: _fetch_all_reverse_orders_info_raw(
+        access_token, start_date, end_date),
     transform_fn=_clean_reverse_orders_info_payload,
     enable_background_refresh=False,
   )
@@ -1325,7 +1433,8 @@ def get_all_reverse_orders_info(
   return [
     order for order in all_orders
     if any(
-      _in_product_scope(line.productDTO.product_id, line.productDTO.sku, product_id, product_sku_id)
+      _in_product_scope(line.productDTO.product_id,
+                        line.productDTO.sku, product_id, product_sku_id)
       for line in order.data.reverseOrderLineDTOList
     )
   ]
@@ -1343,16 +1452,26 @@ def get_all_reverse_orders_info(
 # key used throughout below.
 # ---------------------------------------------------------------------------
 
+
 _RETURN_REASON_HINTS = [
-    (("size", "fit", "small", "large", "tight", "loose"), "Sizing mismatch — double-check size chart accuracy and consider adding a fit guide."),
-    (("not as described", "different", "not match", "not same", "misleading", "not what"), "Listing doesn't match the product received — audit photos and description for accuracy."),
-    (("defect", "damage", "broken", "faulty", "not working", "quality", "poor"), "Quality or packaging issue — review QC and packaging before shipment."),
-    (("wrong item", "wrong product", "incorrect item", "different item"), "Fulfillment error — audit the picking/packing process for mix-ups."),
-    (("late", "delay", "shipping", "delivery"), "Delivery experience issue — review courier performance and SLAs."),
-    (("change of mind", "changed my mind", "no longer", "don't want", "dont want", "don't need", "dont need"), "Buyer's remorse — set clearer expectations pre-purchase to reduce impulse returns."),
-    (("color", "colour"), "Color mismatch — check photo color accuracy across devices/lighting."),
-    (("price", "cheaper", "found cheaper"), "Price sensitivity — monitor competitor pricing on this product."),
+    (("size", "fit", "small", "large", "tight", "loose"),
+     "Sizing mismatch — double-check size chart accuracy and consider adding a fit guide."),
+    (("not as described", "different", "not match", "not same", "misleading", "not what"),
+     "Listing doesn't match the product received — audit photos and description for accuracy."),
+    (("defect", "damage", "broken", "faulty", "not working", "quality", "poor"),
+     "Quality or packaging issue — review QC and packaging before shipment."),
+    (("wrong item", "wrong product", "incorrect item", "different item"),
+     "Fulfillment error — audit the picking/packing process for mix-ups."),
+    (("late", "delay", "shipping", "delivery"),
+     "Delivery experience issue — review courier performance and SLAs."),
+    (("change of mind", "changed my mind", "no longer", "don't want", "dont want", "don't need",
+     "dont need"), "Buyer's remorse — set clearer expectations pre-purchase to reduce impulse returns."),
+    (("color", "colour"),
+     "Color mismatch — check photo color accuracy across devices/lighting."),
+    (("price", "cheaper", "found cheaper"),
+     "Price sensitivity — monitor competitor pricing on this product."),
 ]
+
 
 def _infer_return_recommendation(reason_text: str) -> str:
     lowered = (reason_text or "").lower()
@@ -1361,11 +1480,13 @@ def _infer_return_recommendation(reason_text: str) -> str:
             return recommendation
     return "Recurring complaint — investigate directly with affected customers to find the root cause."
 
+
 def _item_id_from_shop_sku(shop_sku: Optional[str]) -> Optional[int]:
     if not shop_sku:
         return None
     prefix = shop_sku.split("_", 1)[0]
     return int(prefix) if prefix.isdigit() else None
+
 
 def _epoch_to_datetime(value: Optional[int]) -> Optional[datetime]:
     if not value:
@@ -1376,9 +1497,11 @@ def _epoch_to_datetime(value: Optional[int]) -> Optional[datetime]:
     except (ValueError, OSError, OverflowError):
         return None
 
+
 def _epoch_to_month(value: Optional[int]) -> Optional[str]:
     dt = _epoch_to_datetime(value)
     return dt.strftime("%Y-%m") if dt else None
+
 
 def get_returns_insights_stream(
     access_token: str,
@@ -1388,7 +1511,8 @@ def get_returns_insights_stream(
     end_date: Optional[str] = None,
 ):
     yield "progress", {"stage": "fetching_returns"}
-    reverse_orders = get_all_reverse_orders_info(access_token, start_date=start_date, end_date=end_date)
+    reverse_orders = get_all_reverse_orders_info(
+        access_token, start_date=start_date, end_date=end_date)
     yield "progress", {"stage": "fetched_returns", "count": len(reverse_orders)}
 
     if end_date is None:
@@ -1396,12 +1520,14 @@ def get_returns_insights_stream(
     if start_date is None:
         last_reverse_order = reverse_orders[-1].data.reverseOrderLineDTOList[0].trade_order_gmt_create
         last_reverse_order_dt = datetime.fromtimestamp(last_reverse_order)
-        start_date = (last_reverse_order_dt - timedelta(days=1)).date().isoformat()
+        start_date = (last_reverse_order_dt -
+                      timedelta(days=1)).date().isoformat()
         print("last_reverse_order: ", start_date)
 
     print(f"Fetching orders with items for {start_date} to {end_date}...")
     yield "progress", {"stage": "fetching_orders"}
-    orders_res = get_orders_with_items(access_token, start_date=start_date, end_date=end_date)
+    orders_res = get_orders_with_items(
+        access_token, start_date=start_date, end_date=end_date)
     print("orders_res: ", orders_res)
     yield "progress", {"stage": "fetched_orders", "count": orders_res.get("count", 0)}
     # --- units sold, within the requested scope ---
@@ -1454,9 +1580,12 @@ def get_returns_insights_stream(
         for month, count in sorted(monthly_counter.items())
     ]
 
-    overall_return_rate = round(scoped_returns / scoped_units_sold * 100, 1) if scoped_units_sold else 0.0
-    dispute_rate = round(scoped_dispute_count / scoped_returns * 100, 1) if scoped_returns else 0.0
-    refund_request_rate = round(scoped_refund_request_count / scoped_returns * 100, 1) if scoped_returns else 0.0
+    overall_return_rate = round(
+        scoped_returns / scoped_units_sold * 100, 1) if scoped_units_sold else 0.0
+    dispute_rate = round(scoped_dispute_count /
+                         scoped_returns * 100, 1) if scoped_returns else 0.0
+    refund_request_rate = round(
+        scoped_refund_request_count / scoped_returns * 100, 1) if scoped_returns else 0.0
 
     recommendations = []
     if overall_return_rate >= 10:
@@ -1509,6 +1638,7 @@ def get_returns_insights(
             result = data
     return result
 
+
 def get_returns_dashboard(
     access_token: str,
     start_date: Optional[str] = None,
@@ -1519,20 +1649,24 @@ def get_returns_dashboard(
     (get_all_products, for titles) rather than just the products that show
     up in a given order/return window — a product with zero sales and zero
     returns still shows up here, it just won't rank near the top."""
-    reverse_orders = get_all_reverse_orders_info(access_token, start_date=start_date, end_date=end_date)
+    reverse_orders = get_all_reverse_orders_info(
+        access_token, start_date=start_date, end_date=end_date)
 
     if end_date is None:
         end_date = datetime.now().date().isoformat()
     if start_date is None:
         last_reverse_order = reverse_orders[-1].data.reverseOrderLineDTOList[0].trade_order_gmt_create
         last_reverse_order_dt = datetime.fromtimestamp(last_reverse_order)
-        start_date = (last_reverse_order_dt - timedelta(days=1)).date().isoformat()
+        start_date = (last_reverse_order_dt -
+                      timedelta(days=1)).date().isoformat()
         print("last_reverse_order: ", start_date)
 
-    orders_res = get_orders_with_items(access_token, start_date=start_date, end_date=end_date)
+    orders_res = get_orders_with_items(
+        access_token, start_date=start_date, end_date=end_date)
     all_products = get_all_products(access_token)
     product_titles = {
-        product.item_id: (product.attributes.name_en or product.attributes.name)
+        product.item_id: (
+            product.attributes.name_en or product.attributes.name)
         for product in all_products.data.products
     }
 
@@ -1558,14 +1692,17 @@ def get_returns_dashboard(
                 continue
             pid = line.productDTO.product_id
             returns_by_product[pid] += 1
-            refund_by_product[pid] += line.refund_amount / 100  # paisa -> rupees
+            refund_by_product[pid] += line.refund_amount / \
+                100  # paisa -> rupees
 
-    all_product_ids = set(units_sold_by_product) | set(returns_by_product) | set(product_titles)
+    all_product_ids = set(units_sold_by_product) | set(
+        returns_by_product) | set(product_titles)
     product_stats = []
     for pid in all_product_ids:
         sold = units_sold_by_product.get(pid, 0)
         returned = returns_by_product.get(pid, 0)
-        rate = round(returned / sold * 100, 1) if sold else (100.0 if returned else 0.0)
+        rate = round(returned / sold * 100,
+                     1) if sold else (100.0 if returned else 0.0)
         product_stats.append({
             "product_id": pid,
             "product_title": product_titles.get(pid),
@@ -1574,26 +1711,477 @@ def get_returns_dashboard(
             "return_rate": rate,
             "total_refund_amount": round(refund_by_product.get(pid, 0.0), 2),
         })
-    product_stats.sort(key=lambda p: (p["return_rate"], p["units_returned"]), reverse=True)
+    product_stats.sort(key=lambda p: (
+        p["return_rate"], p["units_returned"]), reverse=True)
     # Only rank products with enough sales volume to be a meaningful signal
     # — one sale that got returned is a 100% rate but not yet a real pattern.
-    ranked_products = [p for p in product_stats if p["units_sold"] >= 3][:top_n]
+    ranked_products = [
+        p for p in product_stats if p["units_sold"] >= 3][:top_n]
 
     return {
         "date_range": {"start_date": start_date, "end_date": end_date},
         "top_products_by_return_rate": ranked_products,
     }
 
+
 def payout_statement(access_token: str):
-  request = LazopRequest('/finance/payout/status/get','GET')
+  request = LazopRequest('/finance/payout/status/get', 'GET')
   request.add_api_param('created_after', '2018-01-01')
   response = lazop_client.execute(request, access_token)
   print(response.type)
   print(response.body)
   return response.body
 
+
+def get_seller_info(access_token: str) -> dict:
+  """Get seller information by current seller ID via /seller/get."""
+  request = LazopRequest('/seller/get', 'GET')
+  response = lazop_client.execute(request, access_token)
+  logger.info("Seller info response: %s", response.body)
+  body = response.body
+  if isinstance(body, str):
+    body = json.loads(body)
+  code = str(body.get("code", ""))
+  if code != "0":
+    message = body.get("message") or body.get("detail") or "unknown error"
+    raise HTTPException(
+        status_code=502, detail=f"Daraz seller/get failed ({code}): {message}")
+  return body
+
+
 def get_conversations_sessions(access_token: str):
-  request = LazopRequest('/im/session/list','GET')
+  request = LazopRequest('/im/session/list', 'GET')
   response = lazop_client.execute(request, access_token)
   print(response.body)
   return response.body
+
+# ---------------------------------------------------------------------------
+# Financial Analytics Service Functions
+# ---------------------------------------------------------------------------
+
+
+def get_transaction_details(
+  access_token: str,
+  start_date: Optional[str] = None,
+  end_date: Optional[str] = None,
+  page: int = 1,
+  page_size: int = 100
+) -> dict:
+  """Fetch transaction details from Daraz Finance API."""
+  request = LazopRequest('/finance/transaction/details/get', 'GET')
+
+  if start_date:
+    request.add_api_param('start_time', start_date)
+  if end_date:
+    request.add_api_param('end_time', end_date)
+
+  request.add_api_param('current', str(page))
+  request.add_api_param('page_size', str(page_size))
+
+  response = lazop_client.execute(request, access_token)
+  logger.info("Transaction details response: %s", response.body)
+
+  body = response.body
+  if isinstance(body, str):
+    body = json.loads(body)
+
+  code = str(body.get("code", ""))
+  if code != "0":
+    message = body.get("message") or body.get("detail") or "unknown error"
+    raise HTTPException(
+      status_code=502,
+      detail=f"Daraz transaction details failed ({code}): {message}"
+    )
+
+  return body
+
+
+def get_all_transactions(
+  access_token: str,
+  start_date: Optional[str] = None,
+  end_date: Optional[str] = None,
+  max_pages: int = 10
+) -> list:
+  """Fetch all transactions with automatic pagination."""
+  all_transactions = []
+  page = 1
+
+  while page <= max_pages:
+    response = get_transaction_details(
+      access_token=access_token,
+      start_date=start_date,
+      end_date=end_date,
+      page=page,
+      page_size=100
+    )
+
+    transactions = response.get("data", [])
+    print("transactions: ", transactions)
+    # transactions = data.get("transaction_list", [])
+
+    if not transactions:
+      break
+
+    all_transactions.extend(transactions)
+
+    total_count = len(transactions)
+    if len(all_transactions) >= total_count:
+      break
+
+    page += 1
+
+  return all_transactions
+
+
+def get_payout_analytics(
+  access_token: str,
+  start_date: Optional[str] = None,
+  end_date: Optional[str] = None
+) -> dict:
+  """Enhanced payout analytics with status breakdown."""
+  request = LazopRequest('/finance/payout/status/get', 'GET')
+
+  if start_date:
+    request.add_api_param('created_after', start_date)
+
+  response = lazop_client.execute(request, access_token)
+  body = response.body
+
+  if isinstance(body, str):
+    body = json.loads(body)
+
+  code = str(body.get("code", ""))
+  if code != "0":
+    raise HTTPException(
+      status_code=502,
+      detail=f"Failed to fetch payout data: {body.get('message')}"
+    )
+
+  payout_list = body.get("data", [])
+  print("payout_list: ", payout_list)
+
+  analytics = {
+    "total_payouts": len(payout_list),
+    "upcoming": [],
+    "pending": [],
+    "paid": [],
+    "failed": [],
+    "total_amount": 0.0,
+    "upcoming_amount": 0.0,
+    "pending_amount": 0.0,
+    "paid_amount": 0.0,
+  }
+
+  for payout in payout_list:
+    # Parse amount from "5601.60 PKR" format
+    payout_str = str(payout.get("payout", "0"))
+    amount = float(payout_str.split()[0]) if payout_str.strip() else 0.0
+
+    # Determine status from "paid" flag ("0" or "1")
+    paid_flag = str(payout.get("paid", "0")).strip()
+    is_paid = paid_flag == "1"
+    status = "paid" if is_paid else "upcoming"
+
+    statement_number = payout.get("statement_number", "")
+
+    payout_info = {
+      "payout_id": statement_number,
+      "statement_number": statement_number,
+      "status": status,
+      "amount": round(amount, 2),
+      "currency": "PKR",
+      "item_revenue": float(payout.get("item_revenue", 0)),
+      "fees_total": float(payout.get("fees_total", 0)),
+      "refunds": float(payout.get("refunds", 0)),
+      "fees_on_refunds_total": float(payout.get("fees_on_refunds_total", 0)),
+      "other_revenue_total": float(payout.get("other_revenue_total", 0)),
+      "shipment_fee_credit": float(payout.get("shipment_fee_credit", 0)),
+      "closing_balance": float(payout.get("closing_balance", 0)),
+      "opening_balance": float(payout.get("opening_balance", 0)),
+      "paid": is_paid,
+      "created_at": payout.get("created_at", ""),
+      "updated_at": payout.get("updated_at") or None,
+    }
+
+    analytics["total_amount"] += amount
+
+    if is_paid:
+      analytics["paid"].append(payout_info)
+      analytics["paid_amount"] += amount
+    else:
+      analytics["upcoming"].append(payout_info)
+      analytics["upcoming_amount"] += amount
+
+  return analytics
+
+
+def calculate_fee_breakdown(
+  access_token: str,
+  start_date: Optional[str] = None,
+  end_date: Optional[str] = None
+) -> dict:
+  """Calculate comprehensive fee breakdown from transactions."""
+  transactions = get_all_transactions(access_token, start_date, end_date)
+
+  breakdown = {
+    "total_revenue": Decimal("0"),
+    "total_commission": Decimal("0"),
+    "total_payment_fees": Decimal("0"),
+    "total_shipping_fees": Decimal("0"),
+    "total_refunds": Decimal("0"),
+    "total_penalties": Decimal("0"),
+    "total_promotional_discounts": Decimal("0"),
+  }
+
+  for txn in transactions:
+    amount = Decimal(str(txn.get("amount", 0)).replace(",", "").strip())
+    fee_name = txn.get("fee_name", "").lower()
+
+    # Positive amounts are revenue/sales
+    if amount > 0:
+      breakdown["total_revenue"] += abs(amount)
+    else:
+      # Negative amounts are deductions - categorize by fee_name
+      # Check specific promotional/discount fees first (before "refund" keyword)
+      if any(kw in fee_name for kw in ["voucher", "coins discount", "co-funded"]):
+        breakdown["total_promotional_discounts"] += abs(amount)
+      elif "refund" in fee_name or "return" in fee_name:
+        breakdown["total_refunds"] += abs(amount)
+      elif "shipping fee" in fee_name or "handling fee" in fee_name:
+        breakdown["total_shipping_fees"] += abs(amount)
+      elif "payment fee" in fee_name:
+        breakdown["total_payment_fees"] += abs(amount)
+      elif "commission" in fee_name or "platform fee" in fee_name or "daraz fee" in fee_name:
+        breakdown["total_commission"] += abs(amount)
+      elif any(kw in fee_name for kw in ["penalty", "fine", "income tax", "withholding"]):
+        breakdown["total_penalties"] += abs(amount)
+      else:
+        # Default: categorize other fees as commission/platform fees
+        breakdown["total_commission"] += abs(amount)
+
+  total_deductions = (
+    breakdown["total_commission"] +
+    breakdown["total_payment_fees"] +
+    breakdown["total_shipping_fees"] +
+    breakdown["total_penalties"] +
+    breakdown["total_promotional_discounts"]
+  )
+
+  breakdown["net_payout"] = breakdown["total_revenue"] - \
+      total_deductions - breakdown["total_refunds"]
+
+  effective_fee_rate = (
+      total_deductions / breakdown["total_revenue"] * 100) if breakdown["total_revenue"] > 0 else 0
+
+  return {
+    "total_revenue": float(round(breakdown["total_revenue"], 2)),
+    "total_commission": float(round(breakdown["total_commission"], 2)),
+    "total_payment_fees": float(round(breakdown["total_payment_fees"], 2)),
+    "total_shipping_fees": float(round(breakdown["total_shipping_fees"], 2)),
+    "total_refunds": float(round(breakdown["total_refunds"], 2)),
+    "total_penalties": float(round(breakdown["total_penalties"], 2)),
+    "total_promotional_discounts": float(round(breakdown["total_promotional_discounts"], 2)),
+    "net_payout": float(round(breakdown["net_payout"], 2)),
+    "effective_fee_rate": float(round(effective_fee_rate, 2))
+  }
+
+
+def reconcile_settlement(
+  access_token: str,
+  payout_id: str
+) -> dict:
+  """Reconcile a specific payout with its constituent orders."""
+  request = LazopRequest('/finance/payout/status/get', 'GET')
+  response = lazop_client.execute(request, access_token)
+  body = response.body
+
+  if isinstance(body, str):
+    body = json.loads(body)
+
+  # data is a list of payout statement entries
+  payouts = body.get("data", [])
+  target_payout = None
+
+  for payout in payouts:
+    if payout.get("statement_number") == payout_id:
+      target_payout = payout
+      break
+
+  if not target_payout:
+    raise HTTPException(
+      status_code=404,
+      detail=f"Payout {payout_id} not found"
+    )
+
+  # Parse payout amount from "5601.60 PKR" format
+  payout_str = str(target_payout.get("payout", "0"))
+  payout_amount = float(payout_str.split()[0]) if payout_str.strip() else 0.0
+
+  # Use statement fields for reconciliation
+  item_revenue = float(target_payout.get("item_revenue", 0))
+  fees_total = float(target_payout.get("fees_total", 0))
+  refunds = float(target_payout.get("refunds", 0))
+  fees_on_refunds = float(target_payout.get("fees_on_refunds_total", 0))
+  other_revenue = float(target_payout.get("other_revenue_total", 0))
+  shipment_fee_credit = float(target_payout.get("shipment_fee_credit", 0))
+
+  # Calculate expected payout from statement components
+  calculated_payout = item_revenue + fees_total + other_revenue + shipment_fee_credit + refunds + fees_on_refunds
+  difference = payout_amount - calculated_payout
+
+  return {
+    "payout_id": payout_id,
+    "payout_amount": round(payout_amount, 2),
+    "payout_date": target_payout.get("created_at"),
+    "orders": [],
+    "total_order_value": round(item_revenue, 2),
+    "total_deductions": round(abs(fees_total), 2),
+    "calculated_payout": round(calculated_payout, 2),
+    "difference": round(difference, 2),
+    "status": "reconciled" if abs(difference) < 1 else "discrepancy"
+  }
+
+
+def get_profit_analytics(
+  access_token: str,
+  start_date: Optional[str] = None,
+  end_date: Optional[str] = None
+) -> dict:
+  """Calculate profit metrics for a given period."""
+  transactions = get_all_transactions(access_token, start_date, end_date)
+  
+  total_revenue = Decimal("0")
+  total_costs = Decimal("0")
+  order_ids = set()
+  
+  for txn in transactions:
+    value = txn.get("amount", 0)
+    if isinstance(value, str):
+      value = value.replace(",", "").strip()
+    amount = Decimal(value or "0")
+    fee_name = txn.get("fee_name", "").lower()
+    order_id = txn.get("order_no") or txn.get("order_id")
+    
+    if order_id:
+      order_ids.add(order_id)
+    
+    # Positive amounts are revenue
+    if amount > 0:
+      total_revenue += abs(amount)
+    else:
+      # Negative amounts are deductions
+      # Actual customer refunds reduce revenue (money returned to buyer)
+      if fee_name in ("refund", "customer refund") or "refund" in fee_name and "fees_on_refund" not in fee_name:
+        total_revenue -= abs(amount)
+      else:
+        # All other negative transactions are platform costs/fees
+        total_costs += abs(amount)
+  
+  net_profit = total_revenue - total_costs
+  profit_margin = (net_profit / total_revenue * 100) if total_revenue > 0 else 0
+  
+  period = f"{start_date or 'all'} to {end_date or 'now'}"
+  
+  return {
+    "period": period,
+    "total_revenue": float(round(total_revenue, 2)),
+    "total_costs": float(round(total_costs, 2)),
+    "net_profit": float(round(net_profit, 2)),
+    "profit_margin": float(round(profit_margin, 2)),
+    "order_count": len(order_ids)
+  }
+
+
+def get_cash_flow_analysis(
+  access_token: str,
+  days: int = 30
+) -> list:
+  """Analyze cash flow over the past N days."""
+  from datetime import datetime, timedelta
+  from collections import defaultdict
+  
+  end_date = datetime.now()
+  start_date = end_date - timedelta(days=days)
+  
+  transactions = get_all_transactions(
+    access_token,
+    start_date=start_date.strftime("%Y-%m-%d"),
+    end_date=end_date.strftime("%Y-%m-%d")
+  )
+  
+  daily_flow = defaultdict(lambda: {"inflow": Decimal("0"), "outflow": Decimal("0")})
+  
+  for txn in transactions:
+    value = txn.get("amount", 0)
+    if isinstance(value, str):
+      value = value.replace(",", "").strip()
+    amount = Decimal(value or "0")
+    # Use transaction_date field from Daraz API
+    created_at = txn.get("transaction_date", "") or txn.get("created_at", "")
+    # Parse date format like "01 Sep 2026" or "2026-09-01"
+    try:
+      if " " in created_at and len(created_at.split()) == 3:
+        # Format: "01 Sep 2026"
+        from datetime import datetime
+        date_obj = datetime.strptime(created_at, "%d %b %Y")
+        date = date_obj.strftime("%Y-%m-%d")
+      else:
+        # Format: "2026-09-01" or similar
+        date = created_at[:10]
+    except:
+      date = created_at[:10] if created_at else ""
+    
+    if amount > 0:
+      daily_flow[date]["inflow"] += amount
+    else:
+      daily_flow[date]["outflow"] += abs(amount)
+  
+  cash_flow = []
+  for date in sorted(daily_flow.keys()):
+    inflow = daily_flow[date]["inflow"]
+    outflow = daily_flow[date]["outflow"]
+    cash_flow.append({
+      "date": date,
+      "inflow": float(round(inflow, 2)),
+      "outflow": float(round(outflow, 2)),
+      "net": float(round(inflow - outflow, 2))
+    })
+  
+  return cash_flow
+
+
+def get_financial_dashboard(
+  access_token: str,
+  days: int = 30
+) -> dict:
+  """Comprehensive financial dashboard with all key metrics."""
+  from datetime import datetime, timedelta
+  
+  end_date = datetime.now()
+  start_date = end_date - timedelta(days=days)
+  
+  start_str = start_date.strftime("%Y-%m-%d")
+  end_str = end_date.strftime("%Y-%m-%d")
+  
+  print('start_date:  ', start_str, "end_date: ", end_str)
+  payout_analytics = get_payout_analytics(access_token, start_str, end_str)
+  fee_breakdown = calculate_fee_breakdown(access_token, start_str, end_str)
+  profit_metric = get_profit_analytics(access_token, start_str, end_str)
+  cash_flow = get_cash_flow_analysis(access_token, days)
+  
+  avg_order_value = fee_breakdown["total_revenue"] / profit_metric["order_count"] if profit_metric["order_count"] > 0 else 0
+  
+  return {
+    "total_revenue": fee_breakdown["total_revenue"],
+    "total_payouts": payout_analytics["paid_amount"],
+    "pending_payouts": payout_analytics["pending_amount"],
+    "upcoming_payouts": payout_analytics["upcoming_amount"],
+    "total_fees": fee_breakdown["total_commission"] + fee_breakdown["total_payment_fees"] + fee_breakdown["total_shipping_fees"] + fee_breakdown["total_penalties"] + fee_breakdown["total_promotional_discounts"],
+    "total_refunds": fee_breakdown["total_refunds"],
+    "net_profit": profit_metric["net_profit"],
+    "profit_margin": profit_metric["profit_margin"],
+    "average_order_value": round(avg_order_value, 2),
+    "fee_breakdown": fee_breakdown,
+    "recent_payouts": payout_analytics["paid"][:5],
+    "cash_flow_trend": cash_flow
+  }

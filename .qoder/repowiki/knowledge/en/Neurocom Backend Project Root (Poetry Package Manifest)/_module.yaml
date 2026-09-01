@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: ""
-title: Neurocom Backend Project Root
+title: Neurocom Backend Project Root (Poetry Package Manifest)
 scope:
     - README.md
     - .gitignore

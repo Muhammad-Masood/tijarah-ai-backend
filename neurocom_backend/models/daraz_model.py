@@ -532,3 +532,107 @@ class ProductHuntResponse(BaseModel):
     total_recommended: int = 0
     subcategories: List[CatalogFilterOption] = []
     recommended_products: List[CatalogProductItem] = []
+
+
+# ---------------------------------------------------------------------------
+# Financial API Response Models
+# ---------------------------------------------------------------------------
+
+
+class PayoutInfo(BaseModel):
+    payout_id: str = ""
+    statement_number: str = ""
+    status: str = ""
+    amount: float = 0.0
+    currency: str = "PKR"
+    item_revenue: float = 0.0
+    fees_total: float = 0.0
+    refunds: float = 0.0
+    fees_on_refunds_total: float = 0.0
+    other_revenue_total: float = 0.0
+    shipment_fee_credit: float = 0.0
+    closing_balance: float = 0.0
+    opening_balance: float = 0.0
+    paid: bool = False
+    created_at: str = ""
+    updated_at: Optional[str] = None
+
+
+class TransactionDetailsResponse(BaseModel):
+    code: str = ""
+    data: List[Dict[str, Any]] = []
+    message: Optional[str] = None
+
+
+class PayoutAnalyticsResponse(BaseModel):
+    total_payouts: int = 0
+    upcoming: List[PayoutInfo] = []
+    pending: List[PayoutInfo] = []
+    paid: List[PayoutInfo] = []
+    failed: List[PayoutInfo] = []
+    total_amount: float = 0.0
+    upcoming_amount: float = 0.0
+    pending_amount: float = 0.0
+    paid_amount: float = 0.0
+
+
+class FeeBreakdownResponse(BaseModel):
+    total_revenue: float = 0.0
+    total_commission: float = 0.0
+    total_payment_fees: float = 0.0
+    total_shipping_fees: float = 0.0
+    total_refunds: float = 0.0
+    total_penalties: float = 0.0
+    total_promotional_discounts: float = 0.0
+    net_payout: float = 0.0
+    effective_fee_rate: float = 0.0
+
+
+class ProfitAnalyticsResponse(BaseModel):
+    period: str = ""
+    total_revenue: float = 0.0
+    total_costs: float = 0.0
+    net_profit: float = 0.0
+    profit_margin: float = 0.0
+    order_count: int = 0
+
+
+class CashFlowEntry(BaseModel):
+    date: str = ""
+    inflow: float = 0.0
+    outflow: float = 0.0
+    net: float = 0.0
+
+
+class ReconciledOrder(BaseModel):
+    order_id: Any
+    gross_value: float = 0.0
+    deductions: float = 0.0
+    net_value: float = 0.0
+
+
+class ReconcileSettlementResponse(BaseModel):
+    payout_id: str = ""
+    payout_amount: float = 0.0
+    payout_date: Optional[str] = None
+    orders: List[ReconciledOrder] = []
+    total_order_value: float = 0.0
+    total_deductions: float = 0.0
+    calculated_payout: float = 0.0
+    difference: float = 0.0
+    status: str = ""
+
+
+class FinancialDashboardResponse(BaseModel):
+    total_revenue: float = 0.0
+    total_payouts: float = 0.0
+    pending_payouts: float = 0.0
+    upcoming_payouts: float = 0.0
+    total_fees: float = 0.0
+    total_refunds: float = 0.0
+    net_profit: float = 0.0
+    profit_margin: float = 0.0
+    average_order_value: float = 0.0
+    fee_breakdown: FeeBreakdownResponse
+    recent_payouts: List[PayoutInfo] = []
+    cash_flow_trend: List[CashFlowEntry] = []

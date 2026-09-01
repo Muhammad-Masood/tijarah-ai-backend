@@ -3,11 +3,11 @@ schema_version: 1
 locale: en-US
 branch: master
 nodes_managed: true
-exported_at: "2026-08-31T18:56:27Z"
+exported_at: "2026-09-01T20:58:10Z"
 modules:
     "":
-        dir_name: Neurocom Backend Project Root (Poetry Package Manifest)
-        title: Neurocom Backend Project Root (Poetry Package Manifest)
+        dir_name: Neurocom Backend Project Root (Poetry Package)
+        title: Neurocom Backend Project Root (Poetry Package)
         scope:
             - README.md
             - .gitignore

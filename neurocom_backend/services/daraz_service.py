@@ -1839,10 +1839,15 @@ def get_payout_analytics(
   end_date: Optional[str] = None
 ) -> dict:
   """Enhanced payout analytics with status breakdown."""
+  from datetime import datetime, timedelta
+
   request = LazopRequest('/finance/payout/status/get', 'GET')
 
   if start_date:
     request.add_api_param('created_after', start_date)
+  else:
+    default_start = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+    request.add_api_param('created_after', default_start)
 
   response = lazop_client.execute(request, access_token)
   body = response.body
@@ -1988,15 +1993,32 @@ def calculate_fee_breakdown(
 
 def reconcile_settlement(
   access_token: str,
-  payout_id: str
+  payout_id: str,
+  start_date: Optional[str] = None
 ) -> dict:
   """Reconcile a specific payout with its constituent orders."""
+  from datetime import datetime, timedelta
+
   request = LazopRequest('/finance/payout/status/get', 'GET')
+
+  if start_date:
+    request.add_api_param('created_after', start_date)
+  else:
+    default_start = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+    request.add_api_param('created_after', default_start)
+
   response = lazop_client.execute(request, access_token)
   body = response.body
 
   if isinstance(body, str):
     body = json.loads(body)
+
+  code = str(body.get("code", ""))
+  if code != "0":
+    raise HTTPException(
+      status_code=502,
+      detail=f"Failed to fetch payout data: {body.get('message')}"
+    )
 
   # data is a list of payout statement entries
   payouts = body.get("data", [])

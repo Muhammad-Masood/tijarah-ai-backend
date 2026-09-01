@@ -390,10 +390,11 @@ async def cashflow_analysis(
 @router.get('/financial/settlement/reconcile/{payout_id}', response_model=ReconcileSettlementResponse)
 async def reconcile_payout(
     payout_id: str,
+    start_date: Optional[str] = None,
     access_token: str = Depends(get_daraz_access_token)
 ):
     """Reconcile a specific payout with its constituent orders."""
-    return reconcile_settlement(access_token, payout_id)
+    return reconcile_settlement(access_token, payout_id, start_date)
 
 @router.get('/conversations/sessions')
 async def conversations_sessions(access_token: str = Depends(get_daraz_access_token)):

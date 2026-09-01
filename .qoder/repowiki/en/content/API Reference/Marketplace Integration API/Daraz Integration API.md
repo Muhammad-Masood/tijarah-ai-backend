@@ -17,13 +17,12 @@
 
 ## Update Summary
 **Changes Made**
-- Added comprehensive product hunting and catalog search functionality with two new endpoints
-- Integrated new service layer (daraz_catalog_service.py) for public catalog scraping
-- Enhanced model definitions for catalog operations including product filtering and niche analysis
-- Added intelligent product discovery capabilities with rating, review, and price-based filtering
-- **NEW**: Enhanced product models with primary_category_name field for improved category information
-- **NEW**: Implemented LRU-cached category name lookup system for efficient mapping of category IDs to names
-- **NEW**: Added automatic data enrichment function for seamless category name population
+- Added comprehensive financial analytics system with 7 new REST endpoints including financial dashboard, transaction details, payout analytics, fee breakdown, profit analytics, cash flow analysis, and settlement reconciliation
+- Enhanced product category system with LRU-cached category name enrichment system providing O(1) performance for category ID-to-name resolution
+- Updated core components section to include financial analytics capabilities
+- Added detailed financial analytics endpoints documentation with request/response schemas
+- Enhanced category information system documentation with performance optimization details
+- Updated architecture diagrams to reflect new financial analytics flow
 
 ## Table of Contents
 1. Introduction
@@ -40,19 +39,20 @@
 This document provides comprehensive API documentation for the Daraz marketplace integration exposed by the backend service. It covers:
 - OAuth authentication flow (authorization code exchange and access token management)
 - Product management endpoints (create, retrieve, category attributes, image migration)
-- **NEW**: Catalog search and product hunting endpoints for automated product discovery
+- **NEW**: Comprehensive financial analytics system with dashboard, transactions, payouts, fees, profit analysis, cash flow, and settlement reconciliation
+- Catalog search and product hunting endpoints for automated product discovery
 - Order processing endpoints (orders, tracking, logistics, reverse orders)
 - Review scraping and analysis
 - Payout statements and conversation sessions
 - Request/response schemas, error handling patterns, and rate limiting considerations specific to Daraz API constraints
 
-The integration uses a custom Lazop client to call Daraz APIs, with FastAPI routers exposing secure endpoints that require merchant authentication and a per-request encrypted Daraz access token header. The new catalog search functionality enables public product discovery without requiring merchant authentication. **Enhanced product models now include primary category names for improved user experience and better category information display.**
+The integration uses a custom Lazop client to call Daraz APIs, with FastAPI routers exposing secure endpoints that require merchant authentication and a per-request encrypted Daraz access token header. The new financial analytics system provides comprehensive business insights through multiple specialized endpoints, while enhanced category information systems deliver improved user experience with automatic category name enrichment and optimized performance through LRU caching.
 
 ## Project Structure
 Key modules involved in the Daraz integration:
-- Routers: HTTP endpoints under /daraz, /auth, /reviews
-- Services: Business logic for Daraz API calls, caching, product normalization, review analysis, **and catalog scraping**
-- Models: Pydantic models defining request/response shapes with enhanced category information
+- Routers: HTTP endpoints under /daraz, /auth, /reviews, and /financial
+- Services: Business logic for Daraz API calls, caching, product normalization, review analysis, **and financial analytics**
+- Models: Pydantic models defining request/response shapes with enhanced category information and financial data structures
 - Lazop SDK wrapper: Low-level HTTP signing and execution against Daraz endpoints
 - Security: JWT-based merchant auth and encrypted token handling
 
@@ -60,34 +60,40 @@ Key modules involved in the Daraz integration:
 graph TB
 Client["Client"] --> AuthRouter["/auth (JWT login)"]
 Client --> DarazRouter["/daraz/* (Daraz endpoints)"]
+Client --> FinancialRouter["/financial/* (Financial analytics)"]
 Client --> ReviewsRouter["/reviews/* (Review analysis)"]
 AuthRouter --> AuthService["authenticate_merchant"]
 DarazRouter --> DarazService["Lazop calls + business logic"]
 DarazRouter --> CatalogService["Catalog scraping + product hunting"]
+FinancialRouter --> FinancialService["Financial analytics engine"]
 ReviewsRouter --> ReviewsService["Scrape + analyze reviews"]
 DarazService --> LazopClient["LazopClient.execute()"]
 DarazService --> CategoryLookup["Category Name Lookup Cache"]
+FinancialService --> TransactionEngine["Transaction Processing"]
+FinancialService --> PayoutAnalyzer["Payout Analytics"]
+FinancialService --> FeeCalculator["Fee Breakdown Engine"]
 CatalogService --> PublicAPI["Public Daraz Catalog API"]
 DarazService --> Models["Pydantic models with enhanced categories"]
+FinancialService --> FinancialModels["Financial Response Models"]
 DarazRouter --> Security["Decrypt access token"]
 DarazRouter --> Dependencies["Merchant resolution"]
 ```
 
 **Diagram sources**
-- [daraz_router.py:82-372](file://neurocom_backend/routers/daraz_router.py#L82-L372)
+- [daraz_router.py:82-447](file://neurocom_backend/routers/daraz_router.py#L82-L447)
 - [auth_router.py:15-42](file://neurocom_backend/routers/auth_router.py#L15-L42)
 - [reviews_router.py:11-42](file://neurocom_backend/routers/reviews_router.py#L11-L42)
-- [daraz_service.py:35-800](file://neurocom_backend/services/daraz_service.py#L35-L800)
+- [daraz_service.py:35-2188](file://neurocom_backend/services/daraz_service.py#L35-L2188)
 - [daraz_catalog_service.py:1-235](file://neurocom_backend/services/daraz_catalog_service.py#L1-L235)
 - [base.py:131-204](file://neurocom_backend/python/lazop/base.py#L131-L204)
 - [security.py:22-43](file://neurocom_backend/utils/security.py#L22-L43)
 - [dependencies.py:14-79](file://neurocom_backend/dependencies.py#L14-L79)
 
 **Section sources**
-- [daraz_router.py:82-372](file://neurocom_backend/routers/daraz_router.py#L82-L372)
+- [daraz_router.py:82-447](file://neurocom_backend/routers/daraz_router.py#L82-L447)
 - [auth_router.py:15-42](file://neurocom_backend/routers/auth_router.py#L15-L42)
 - [reviews_router.py:11-42](file://neurocom_backend/routers/reviews_router.py#L11-L42)
-- [daraz_service.py:35-800](file://neurocom_backend/services/daraz_service.py#L35-L800)
+- [daraz_service.py:35-2188](file://neurocom_backend/services/daraz_service.py#L35-L2188)
 - [daraz_catalog_service.py:1-235](file://neurocom_backend/services/daraz_catalog_service.py#L1-L235)
 - [base.py:131-204](file://neurocom_backend/python/lazop/base.py#L131-L204)
 - [security.py:22-43](file://neurocom_backend/utils/security.py#L22-L43)
@@ -97,14 +103,22 @@ DarazRouter --> Dependencies["Merchant resolution"]
 - OAuth and Merchant Authentication:
   - POST /auth/login returns a JWT for merchant accounts
   - All Daraz endpoints require a valid merchant JWT plus an encrypted Daraz access token header
-- **NEW**: Catalog Search and Product Hunting:
-  - POST /catalog/search: Search products by query with pagination and filtering
-  - POST /catalog/hunt: Intelligent product discovery based on niches with quality filters
-  - No authentication required for public catalog scraping
+- **NEW**: Comprehensive Financial Analytics System:
+  - GET /financial/dashboard: Comprehensive financial overview with key metrics
+  - GET /financial/transactions: Detailed transaction listing with pagination
+  - GET /financial/payouts/analytics: Payout analytics broken down by status
+  - GET /financial/fees/breakdown: Detailed fee breakdown analysis
+  - GET /financial/profit: Profit and loss analytics for given periods
+  - GET /financial/cashflow: Daily cash flow analysis showing inflows/outflows
+  - GET /financial/settlement/reconcile/{payout_id}: Settlement reconciliation for specific payouts
 - **NEW**: Enhanced Category Information System:
   - Primary category names automatically populated in product responses
   - LRU-cached category lookup for optimal performance
   - Seamless integration with existing product retrieval endpoints
+- Catalog Search and Product Hunting:
+  - POST /catalog/search: Search products by query with pagination and filtering
+  - POST /catalog/hunt: Intelligent product discovery based on niches with quality filters
+  - No authentication required for public catalog scraping
 - Daraz Access Token Resolution:
   - Header x-daraz-access-token is decrypted and validated against the authenticated merchant's connection
 - Lazop Client:
@@ -131,53 +145,45 @@ DarazRouter --> Dependencies["Merchant resolution"]
 - [security.py:22-43](file://neurocom_backend/utils/security.py#L22-L43)
 - [dependencies.py:14-79](file://neurocom_backend/dependencies.py#L14-L79)
 - [base.py:131-204](file://neurocom_backend/python/lazop/base.py#L131-L204)
-- [daraz_router.py:85-372](file://neurocom_backend/routers/daraz_router.py#L85-L372)
-- [daraz_service.py:35-800](file://neurocom_backend/services/daraz_service.py#L35-L800)
+- [daraz_router.py:85-447](file://neurocom_backend/routers/daraz_router.py#L85-L447)
+- [daraz_service.py:35-2188](file://neurocom_backend/services/daraz_service.py#L35-L2188)
 - [daraz_catalog_service.py:109-235](file://neurocom_backend/services/daraz_catalog_service.py#L109-L235)
 - [reviews_router.py:11-42](file://neurocom_backend/routers/reviews_router.py#L11-L42)
 - [reviews_service.py:59-304](file://neurocom_backend/services/reviews_service.py#L59-L304)
 
 ## Architecture Overview
-The system exposes REST endpoints that enforce merchant authentication and per-call Daraz authorization. The Daraz service layer handles API calls through a Lazop client, caches results where appropriate, normalizes payloads, and enforces domain rules (e.g., required size charts). **The new catalog service layer provides public product discovery capabilities without requiring merchant authentication, while enhanced category information is automatically enriched in product responses.**
+The system exposes REST endpoints that enforce merchant authentication and per-call Daraz authorization. The Daraz service layer handles API calls through a Lazop client, caches results where appropriate, normalizes payloads, and enforces domain rules (e.g., required size charts). **The new financial analytics system provides comprehensive business intelligence through specialized endpoints that aggregate transaction data, calculate fees, analyze profits, and reconcile settlements.**
 
 ```mermaid
 sequenceDiagram
 participant C as "Client"
 participant A as "Auth Router"
 participant D as "Daraz Router"
+participant F as "Financial Router"
 participant S as "Daraz Service"
-participant CS as "Catalog Service"
+participant FS as "Financial Service"
 participant CL as "Category Lookup"
 participant L as "Lazop Client"
-participant PA as "Public API"
-participant DB as "Database"
 C->>A : POST /auth/login
 A-->>C : JWT (merchant)
-C->>D : GET /get_all_products<br/>Header : x-daraz-access-token
-D->>S : get_all_products(access_token)
-S->>CL : _category_name_lookup()
+C->>F : GET /financial/dashboard<br/>Header : x-daraz-access-token
+F->>FS : get_financial_dashboard(access_token)
+FS->>S : get_all_transactions()
+S->>L : Execute finance API
+L-->>S : Transaction data
+FS->>CL : _category_name_lookup()
 CL->>DB : Fetch cached categories
 DB-->>CL : Category map
-CL-->>S : Category ID -> Name mapping
-S->>L : Execute product listing API
-L-->>S : Raw product data
-S->>S : _enrich_primary_category_names()
-S-->>D : Products with category names
-D-->>C : Enhanced product response
-C->>D : POST /catalog/search<br/>Body : {query, page, max_pages}
-D->>CS : scrape_products_by_category()
-CS->>PA : GET https : //www.daraz.pk/catalog/?ajax=true
-PA-->>CS : JSON response
-CS-->>D : Filtered products
-D-->>C : Catalog search results
+CL-->>FS : Category ID -> Name mapping
+FS->>FS : Calculate fees, profit, cash flow
+FS-->>F : Financial dashboard response
+F-->>C : Comprehensive financial overview
 ```
 
 **Diagram sources**
 - [auth_router.py:24-37](file://neurocom_backend/routers/auth_router.py#L24-L37)
-- [daraz_router.py:351-371](file://neurocom_backend/routers/daraz_router.py#L351-L371)
-- [daraz_catalog_service.py:109-235](file://neurocom_backend/services/daraz_catalog_service.py#L109-L235)
-- [daraz_service.py:55-100](file://neurocom_backend/services/daraz_service.py#L55-L100)
-- [daraz_service.py:290-326](file://neurocom_backend/services/daraz_service.py#L290-L326)
+- [daraz_router.py:330-397](file://neurocom_backend/routers/daraz_router.py#L330-L397)
+- [daraz_service.py:1763-2188](file://neurocom_backend/services/daraz_service.py#L1763-L2188)
 - [base.py:140-204](file://neurocom_backend/python/lazop/base.py#L140-L204)
 - [security.py:31-43](file://neurocom_backend/utils/security.py#L31-L43)
 - [dependencies.py:17-43](file://neurocom_backend/dependencies.py#L17-L43)
@@ -224,6 +230,52 @@ Common errors:
 - [daraz_router.py:24-78](file://neurocom_backend/routers/daraz_router.py#L24-L78)
 - [security.py:31-43](file://neurocom_backend/utils/security.py#L31-L43)
 
+### **NEW**: Comprehensive Financial Analytics System
+**Updated** Added complete financial analytics system with 7 specialized endpoints for comprehensive business intelligence.
+
+Key features:
+- **Financial Dashboard**: Aggregated view of revenue, payouts, fees, profit margins, and cash flow trends
+- **Transaction Details**: Paginated access to detailed transaction records with date filtering
+- **Payout Analytics**: Status-based breakdown of payouts (paid, upcoming, pending, failed)
+- **Fee Breakdown**: Detailed categorization of platform fees, commissions, shipping costs, and penalties
+- **Profit Analytics**: Net profit calculations with margin analysis and order count tracking
+- **Cash Flow Analysis**: Daily inflow/outflow tracking over configurable time periods
+- **Settlement Reconciliation**: Verification of payout amounts against constituent orders
+
+Implementation details:
+- `get_transaction_details()`: Fetches paginated transaction data from Daraz Finance API
+- `get_all_transactions()`: Automatic pagination to retrieve complete transaction history
+- `calculate_fee_breakdown()`: Categorizes fees into commission, payment, shipping, refunds, penalties, and promotional discounts
+- `get_profit_analytics()`: Calculates net profit by distinguishing between revenue reductions (refunds) and platform costs
+- `get_cash_flow_analysis()`: Tracks daily cash movements with inflow/outflow classification
+- `reconcile_settlement()`: Verifies payout accuracy by comparing calculated vs. actual amounts
+
+Performance benefits:
+- Efficient transaction aggregation with automatic pagination
+- Decimal arithmetic for precise financial calculations
+- Configurable time ranges for flexible analysis periods
+- Optimized fee categorization with keyword matching
+
+**Section sources**
+- [daraz_router.py:330-397](file://neurocom_backend/routers/daraz_router.py#L330-L397)
+- [daraz_service.py:1763-2188](file://neurocom_backend/services/daraz_service.py#L1763-L2188)
+- [daraz_model.py:561-638](file://neurocom_backend/models/daraz_model.py#L561-L638)
+
+#### Financial Analytics Flow
+```mermaid
+flowchart TD
+Start(["Financial Dashboard Request"]) --> GetTransactions["Fetch All Transactions"]
+GetTransactions --> ProcessFees["Calculate Fee Breakdown"]
+ProcessFees --> AnalyzeProfits["Compute Profit Metrics"]
+AnalyzeProfits --> TrackCashFlow["Generate Cash Flow Analysis"]
+TrackCashFlow --> AggregateData["Aggregate Key Metrics"]
+AggregateData --> ReturnDashboard["Return Comprehensive Dashboard"]
+```
+
+**Diagram sources**
+- [daraz_service.py:2153-2188](file://neurocom_backend/services/daraz_service.py#L2153-L2188)
+- [daraz_router.py:330-337](file://neurocom_backend/routers/daraz_router.py#L330-L337)
+
 ### **NEW**: Enhanced Category Information System
 **Updated** Added comprehensive category name enrichment system for improved product information display.
 
@@ -244,7 +296,7 @@ Performance benefits:
 - Minimal overhead added to existing product operations
 
 **Section sources**
-- [daraz_service.py:290-326](file://neurocom_backend/services/daraz_service.py#L290-L326)
+- [daraz_service.py:319-355](file://neurocom_backend/services/daraz_service.py#L319-L355)
 - [daraz_model.py:193-202](file://neurocom_backend/models/daraz_model.py#L193-L202)
 - [daraz_service.py:85-108](file://neurocom_backend/services/daraz_service.py#L85-L108)
 
@@ -266,7 +318,7 @@ SetName --> Return["Return enriched data"]
 ```
 
 **Diagram sources**
-- [daraz_service.py:290-326](file://neurocom_backend/services/daraz_service.py#L290-L326)
+- [daraz_service.py:319-355](file://neurocom_backend/services/daraz_service.py#L319-L355)
 - [daraz_service.py:85-108](file://neurocom_backend/services/daraz_service.py#L85-L108)
 
 ### **NEW**: Catalog Search and Product Hunting Endpoints
@@ -299,7 +351,7 @@ Rate limiting:
 - Optional session cookies for higher rate limits
 
 **Section sources**
-- [daraz_router.py:351-371](file://neurocom_backend/routers/daraz_router.py#L351-L371)
+- [daraz_router.py:425-447](file://neurocom_backend/routers/daraz_router.py#L425-L447)
 - [daraz_catalog_service.py:109-235](file://neurocom_backend/services/daraz_catalog_service.py#L109-L235)
 - [daraz_model.py:466-526](file://neurocom_backend/models/daraz_model.py#L466-L526)
 
@@ -322,7 +374,7 @@ Sort --> Return["Return Recommendations"]
 
 **Diagram sources**
 - [daraz_catalog_service.py:187-235](file://neurocom_backend/services/daraz_catalog_service.py#L187-L235)
-- [daraz_router.py:363-371](file://neurocom_backend/routers/daraz_router.py#L363-L371)
+- [daraz_router.py:437-447](file://neurocom_backend/routers/daraz_router.py#L437-L447)
 
 ### Product Management Endpoints
 Endpoints:
@@ -444,11 +496,12 @@ Rate limiting:
 - These endpoints are typically low-frequency; no special throttling implemented
 
 **Section sources**
-- [daraz_router.py:323-329](file://neurocom_backend/routers/daraz_router.py#L323-329)
+- [daraz_router.py:323-329](file://neurocom_backend/routers/daraz_router.py#L323-L329)
 
 ## Dependency Analysis
 - Routers depend on services for business logic and on security/dependencies for authentication
 - Services depend on Lazop client for API calls and on Pydantic models for validation
+- **NEW**: Financial service depends on transaction processing, payout analysis, and fee calculation engines
 - **NEW**: Catalog service depends on public HTTP requests to Daraz catalog endpoints
 - **NEW**: Category lookup system provides efficient mapping between category IDs and names
 - Lazop client handles signing and HTTP transport
@@ -457,10 +510,15 @@ Rate limiting:
 graph LR
 DarazRouter --> DarazService
 DarazRouter --> CatalogService
+DarazRouter --> FinancialRouter
 DarazRouter --> Security
 DarazRouter --> Dependencies
+FinancialRouter --> FinancialService
 DarazService --> LazopClient
 DarazService --> CategoryLookup["Category Name Lookup"]
+FinancialService --> TransactionEngine["Transaction Processing"]
+FinancialService --> PayoutAnalyzer["Payout Analytics"]
+FinancialService --> FeeCalculator["Fee Breakdown Engine"]
 CatalogService --> PublicAPI
 DarazService --> Models
 ReviewsRouter --> ReviewsService
@@ -469,20 +527,20 @@ CategoryLookup --> LRU["LRU Cache"]
 ```
 
 **Diagram sources**
-- [daraz_router.py:82-372](file://neurocom_backend/routers/daraz_router.py#L82-L372)
-- [daraz_service.py:35-800](file://neurocom_backend/services/daraz_service.py#L35-L800)
+- [daraz_router.py:82-447](file://neurocom_backend/routers/daraz_router.py#L82-L447)
+- [daraz_service.py:35-2188](file://neurocom_backend/services/daraz_service.py#L35-L2188)
 - [daraz_catalog_service.py:1-235](file://neurocom_backend/services/daraz_catalog_service.py#L1-L235)
 - [base.py:131-204](file://neurocom_backend/python/lazop/base.py#L131-L204)
-- [daraz_model.py:1-526](file://neurocom_backend/models/daraz_model.py#L1-L526)
+- [daraz_model.py:1-638](file://neurocom_backend/models/daraz_model.py#L1-L638)
 - [reviews_router.py:11-42](file://neurocom_backend/routers/reviews_router.py#L11-L42)
 - [reviews_service.py:59-304](file://neurocom_backend/services/reviews_service.py#L59-L304)
 
 **Section sources**
-- [daraz_router.py:82-372](file://neurocom_backend/routers/daraz_router.py#L82-L372)
-- [daraz_service.py:35-800](file://neurocom_backend/services/daraz_service.py#L35-L800)
+- [daraz_router.py:82-447](file://neurocom_backend/routers/daraz_router.py#L82-L447)
+- [daraz_service.py:35-2188](file://neurocom_backend/services/daraz_service.py#L35-L2188)
 - [daraz_catalog_service.py:1-235](file://neurocom_backend/services/daraz_catalog_service.py#L1-L235)
 - [base.py:131-204](file://neurocom_backend/python/lazop/base.py#L131-L204)
-- [daraz_model.py:1-526](file://neurocom_backend/models/daraz_model.py#L1-L526)
+- [daraz_model.py:1-638](file://neurocom_backend/models/daraz_model.py#L1-L638)
 - [reviews_router.py:11-42](file://neurocom_backend/routers/reviews_router.py#L11-L42)
 - [reviews_service.py:59-304](file://neurocom_backend/services/reviews_service.py#L59-L304)
 
@@ -490,12 +548,18 @@ CategoryLookup --> LRU["LRU Cache"]
 - Caching:
   - Product listings and reviews are cached using Redis-backed fingerprinting; volatile envelope keys like request_id and trace_id are stripped to avoid false cache misses
   - **NEW**: Category name lookup uses LRU caching with `@lru_cache(maxsize=1)` for optimal performance
+  - **NEW**: Financial analytics benefit from efficient transaction aggregation with automatic pagination
 - Concurrency:
   - Reviews fetching uses ThreadPoolExecutor to parallelize per-product review calls
 - Payload normalization:
   - HTML descriptions are cleaned to plain text to reduce payload size and improve readability
 - Image handling:
   - Images are validated for type and size; unsupported hosts fall back to upload rather than migrate
+- **NEW**: Financial analytics performance:
+  - Decimal arithmetic ensures precise financial calculations
+  - Automatic pagination prevents memory issues with large transaction sets
+  - Configurable time ranges optimize query performance
+  - Efficient fee categorization with keyword matching reduces processing overhead
 - **NEW**: Catalog scraping performance:
   - Built-in 1.5-second delays between requests to respect Daraz server limits
   - Maximum 50 pages per request to prevent excessive scraping
@@ -516,6 +580,11 @@ Common issues and resolutions:
 - Missing or invalid Daraz access token:
   - Ensure x-daraz-access-token header is present and corresponds to an active merchant connection
   - Decryption errors return 400; verify encryption key configuration
+- **NEW**: Financial analytics issues:
+  - Transaction API failures: Check date range parameters and ensure proper access token permissions
+  - Payout reconciliation discrepancies: Verify payout ID format and check Daraz API response structure
+  - Fee calculation errors: Ensure transaction data contains expected fee_name fields
+  - Cash flow analysis gaps: Verify transaction_date format handling for different date formats
 - **NEW**: Category information issues:
   - Missing category names: Verify category tree is accessible and contains expected data
   - Performance issues: Check LRU cache effectiveness and category tree size
@@ -551,13 +620,15 @@ Error patterns:
 - [daraz_router.py:139-159](file://neurocom_backend/routers/daraz_router.py#L139-L159)
 - [daraz_router.py:173-207](file://neurocom_backend/routers/daraz_router.py#L173-L207)
 - [daraz_router.py:213-248](file://neurocom_backend/routers/daraz_router.py#L213-L248)
-- [daraz_router.py:351-371](file://neurocom_backend/routers/daraz_router.py#L351-L371)
+- [daraz_router.py:330-397](file://neurocom_backend/routers/daraz_router.py#L330-L397)
 - [daraz_service.py:341-350](file://neurocom_backend/services/daraz_service.py#L341-L350)
 - [daraz_service.py:413-446](file://neurocom_backend/services/daraz_service.py#L413-L446)
+- [daraz_service.py:1788-1794](file://neurocom_backend/services/daraz_service.py#L1788-L1794)
+- [daraz_service.py:1853-1858](file://neurocom_backend/services/daraz_service.py#L1853-L1858)
 - [daraz_catalog_service.py:118-127](file://neurocom_backend/services/daraz_catalog_service.py#L118-L127)
 - [reviews_router.py:17-42](file://neurocom_backend/routers/reviews_router.py#L17-L42)
 
 ## Conclusion
-The Daraz integration provides a robust set of endpoints for OAuth-driven merchant authentication, product lifecycle management, **intelligent product discovery through catalog search and hunting**, order processing, review scraping and analysis, payouts, and conversations. The architecture emphasizes secure token handling, strict validation via Pydantic models, efficient caching and concurrency strategies, **and public product discovery capabilities without requiring merchant authentication**. **Enhanced category information systems provide improved user experience with automatic category name enrichment and optimized performance through LRU caching**. For production deployments, implement client-side rate limiting and monitoring around Daraz API responses to handle throttling gracefully.
+The Daraz integration provides a robust set of endpoints for OAuth-driven merchant authentication, product lifecycle management, **comprehensive financial analytics with dashboard, transactions, payouts, fees, profit analysis, cash flow, and settlement reconciliation**, intelligent product discovery through catalog search and hunting, order processing, review scraping and analysis, payouts, and conversations. The architecture emphasizes secure token handling, strict validation via Pydantic models, efficient caching and concurrency strategies, **and comprehensive business intelligence capabilities through specialized financial endpoints**. **Enhanced category information systems provide improved user experience with automatic category name enrichment and optimized performance through LRU caching**. For production deployments, implement client-side rate limiting and monitoring around Daraz API responses to handle throttling gracefully.
 
 [No sources needed since this section summarizes without analyzing specific files]

@@ -3,7 +3,7 @@ schema_version: 1
 locale: en-US
 branch: master
 nodes_managed: true
-exported_at: "2026-09-01T20:58:10Z"
+exported_at: "2026-09-01T21:27:51Z"
 modules:
     "":
         dir_name: Neurocom Backend Project Root (Poetry Package)

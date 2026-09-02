@@ -18,7 +18,7 @@
 ## Update Summary
 **Changes Made**
 - Added comprehensive financial analytics system with 7 new REST endpoints including financial dashboard, transaction details, payout analytics, fee breakdown, profit analytics, cash flow analysis, and settlement reconciliation
-- Enhanced product category system with LRU-cached category name enrichment system providing O(1) performance for category ID-to-name resolution
+- Enhanced settlement reconciliation with optional start_date parameter support and improved error handling
 - Updated core components section to include financial analytics capabilities
 - Added detailed financial analytics endpoints documentation with request/response schemas
 - Enhanced category information system documentation with performance optimization details
@@ -457,8 +457,8 @@ Rate limiting:
 
 **Section sources**
 - [daraz_router.py:250-296](file://neurocom_backend/routers/daraz_router.py#L250-L296)
-- [daraz_model.py:326-405](file://neurocom_backend/models/daraz_model.py#L326-L405)
-- [daraz_model.py:225-281](file://neurocom_backend/models/daraz_model.py#L225-L281)
+- [daraz_model.py:326-405](file://neurocom_backend/models/daraz_model.py#L326-405)
+- [daraz_model.py:225-281](file://neurocom_backend/models/daraz_model.py#L225-281)
 
 ### Review Scraping and Analysis
 Endpoints:
@@ -585,6 +585,7 @@ Common issues and resolutions:
   - Payout reconciliation discrepancies: Verify payout ID format and check Daraz API response structure
   - Fee calculation errors: Ensure transaction data contains expected fee_name fields
   - Cash flow analysis gaps: Verify transaction_date format handling for different date formats
+  - Settlement reconciliation issues: Check optional start_date parameter usage and error handling improvements
 - **NEW**: Category information issues:
   - Missing category names: Verify category tree is accessible and contains expected data
   - Performance issues: Check LRU cache effectiveness and category tree size
@@ -625,6 +626,7 @@ Error patterns:
 - [daraz_service.py:413-446](file://neurocom_backend/services/daraz_service.py#L413-L446)
 - [daraz_service.py:1788-1794](file://neurocom_backend/services/daraz_service.py#L1788-L1794)
 - [daraz_service.py:1853-1858](file://neurocom_backend/services/daraz_service.py#L1853-L1858)
+- [daraz_service.py:1994-2064](file://neurocom_backend/services/daraz_service.py#L1994-L2064)
 - [daraz_catalog_service.py:118-127](file://neurocom_backend/services/daraz_catalog_service.py#L118-L127)
 - [reviews_router.py:17-42](file://neurocom_backend/routers/reviews_router.py#L17-L42)
 

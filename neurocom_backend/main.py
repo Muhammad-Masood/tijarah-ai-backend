@@ -2,8 +2,9 @@ from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect, WebSocketE
 from contextlib import asynccontextmanager, AsyncExitStack
 from dotenv import load_dotenv
 from .database.connection import perform_migration
-from .routers import customer_support_router, order_router, product_router, daraz_router, shopify_router, forecast_router, reviews_router, auth_router, marketplace_router, product_chat_router, storage_router, product_listing_router
+from .routers import customer_support_router, order_router, product_router, daraz_router, shopify_router, forecast_router, reviews_router, auth_router, marketplace_router, product_chat_router, storage_router, product_listing_router, expense_router
 from .routers import tijarah_chat_router
+from .routers import whatsapp_support_router
 from neurocom_backend.dependencies import get_current_user
 from neurocom_backend.mcp_server.customer_support.main import sse_app
 from neurocom_backend.mcp_server.client import MCPClient
@@ -11,6 +12,7 @@ from starlette.routing import Host
 from neurocom_backend.utils.settings import ALLOWED_ORIGINS
 import ast
 from fastapi.middleware.cors import CORSMiddleware
+from datetime import datetime, timezone, timedelta
 
 _: bool = load_dotenv()
 
@@ -18,13 +20,12 @@ _: bool = load_dotenv()
 async def lifespan(app: FastAPI):
     # print("Performing migrations...")
     perform_migration()
-    # mcp.run_sse_async("/sse")
-    # mcp.streamable_http_app()   
-    # mcp.session_manager.run()
-    # async with AsyncExitStack() as stack:
-    #     await stack.enter_async_context(mcp.session_manager.run())
-    # mcp.run()
-    # print("MCP server running...")
+    try:
+        from neurocom_backend.services.whatsapp_scheduler import start_scheduler
+        start_scheduler()
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning("WhatsApp scheduler failed to start", exc_info=True)
     yield
 
 app = FastAPI(title="Tijarah AI Backend Server", lifespan=lifespan)
@@ -87,5 +88,7 @@ app.include_router(reviews_router.router, dependencies=require_auth)
 app.include_router(marketplace_router.router, dependencies=require_auth)
 app.include_router(storage_router.router, dependencies=require_auth)
 app.include_router(product_listing_router.router, dependencies=require_auth)
+app.include_router(expense_router.router, dependencies=require_auth)
 app.include_router(product_chat_router.router)
 app.include_router(tijarah_chat_router.router)
+app.include_router(whatsapp_support_router.router)

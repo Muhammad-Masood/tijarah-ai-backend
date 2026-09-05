@@ -18,8 +18,10 @@ from sqlmodel import Session, select
 from neurocom_backend.database.connection import get_session
 from neurocom_backend.database.models.marketplace import Marketplace, MarketplaceConnection
 from neurocom_backend.database.models.merchant import Merchant
+from neurocom_backend.database.models.expense import ProductExpense
 from neurocom_backend.dependencies import get_current_user, get_current_user_ws
 from neurocom_backend.services.daraz_catalog_service import scrape_products_by_category, hunt_products_for_niche
+from neurocom_backend.services.expense_service import get_merchant_expenses
 
 
 def _resolve_daraz_access_token(
@@ -330,10 +332,14 @@ async def get_payout(access_token: str = Depends(get_daraz_access_token)):
 @router.get('/financial/dashboard', response_model=FinancialDashboardResponse)
 async def financial_dashboard(
     days: int = 30,
-    access_token: str = Depends(get_daraz_access_token)
+    access_token: str = Depends(get_daraz_access_token),
+    merchant: Merchant = Depends(get_current_user),
+    db: Session = Depends(get_session),
 ):
     """Get comprehensive financial dashboard with all key metrics."""
-    return get_financial_dashboard(access_token, days)
+    expenses = get_merchant_expenses(db, merchant.id, platform="daraz")
+    expense_dicts = [{"sku_id": e.sku_id, "amount": e.amount} for e in expenses]
+    return get_financial_dashboard(access_token, days, merchant_expenses=expense_dicts)
 
 @router.get('/financial/transactions', response_model=TransactionDetailsResponse)
 async def get_transactions(
@@ -374,10 +380,14 @@ async def fee_breakdown(
 async def profit_analytics(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    access_token: str = Depends(get_daraz_access_token)
+    access_token: str = Depends(get_daraz_access_token),
+    merchant: Merchant = Depends(get_current_user),
+    db: Session = Depends(get_session),
 ):
     """Get profit and loss analytics for a given period."""
-    return get_profit_analytics(access_token, start_date, end_date)
+    expenses = get_merchant_expenses(db, merchant.id, platform="daraz")
+    expense_dicts = [{"sku_id": e.sku_id, "amount": e.amount} for e in expenses]
+    return get_profit_analytics(access_token, start_date, end_date, merchant_expenses=expense_dicts)
 
 @router.get('/financial/cashflow', response_model=List[CashFlowEntry])
 async def cashflow_analysis(

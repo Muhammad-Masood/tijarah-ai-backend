@@ -3,11 +3,11 @@ schema_version: 1
 locale: en-US
 branch: master
 nodes_managed: true
-exported_at: "2026-09-01T21:27:51Z"
+exported_at: "2026-09-03T16:26:28Z"
 modules:
     "":
-        dir_name: Neurocom Backend Project Root (Poetry Package)
-        title: Neurocom Backend Project Root (Poetry Package)
+        dir_name: Neurocom Backend Project Root (Ask Tijarah Multi-Marketplace Agent)
+        title: Neurocom Backend Project Root (Ask Tijarah Multi-Marketplace Agent)
         scope:
             - README.md
             - .gitignore

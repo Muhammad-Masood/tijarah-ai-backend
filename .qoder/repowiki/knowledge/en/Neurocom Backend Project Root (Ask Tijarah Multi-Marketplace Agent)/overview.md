@@ -1,0 +1,1 @@
+Poetry-managed project root for the neurocom-backend FastAPI service that powers Ask Tijarah, a multi-marketplace conversational agent across Daraz and Shopify.

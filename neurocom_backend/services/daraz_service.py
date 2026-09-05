@@ -1064,6 +1064,22 @@ def get_all_orders(access_token: str, include_canceled: bool = False):
 # the last order in the page, until the running total reaches countTotal.
 # ---------------------------------------------------------------------------
 
+def _parse_date(start_date: Optional[str] = None, end_date: Optional[str] = None):
+    created_after = (
+        start_date
+        if start_date and "T" in start_date
+        else f"{start_date}T00:00:00+08:00"
+        if start_date
+        else "2017-02-10T09:00:00+08:00"
+    )
+    created_before = (
+        end_date
+        if end_date and "T" in end_date
+        else f"{end_date}T23:59:59+08:00"
+        if end_date
+        else None
+    )
+    return created_after, created_before
 
 def _advance_created_after(created_at: str) -> str:
     """Daraz's created_at *response* field looks like
@@ -1079,8 +1095,7 @@ def _advance_created_after(created_at: str) -> str:
 
 def _fetch_all_orders_raw(access_token: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> list:
     page_size = 100
-    created_after = f"{start_date}T00:00:00+08:00" if start_date else '2017-02-10T09:00:00+08:00'
-    created_before = f"{end_date}T23:59:59+08:00" if end_date else None
+    created_after,created_before = _parse_date(start_date, end_date)
     all_orders: list = []
     seen_order_ids: set = set()
     count_total = None
@@ -1844,7 +1859,9 @@ def get_payout_analytics(
   request = LazopRequest('/finance/payout/status/get', 'GET')
 
   if start_date:
-    request.add_api_param('created_after', start_date)
+    start_dt = datetime.strptime(start_date[:10], "%Y-%m-%d")
+    first_of_month = start_dt.replace(day=1).strftime("%Y-%m-%d")
+    request.add_api_param('created_after', first_of_month)
   else:
     default_start = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
     request.add_api_param('created_after', default_start)
@@ -1864,6 +1881,22 @@ def get_payout_analytics(
 
   payout_list = body.get("data", [])
   print("payout_list: ", payout_list)
+
+  # Filter out payouts that fall before the actual start_date
+  if start_date:
+    start_cutoff = datetime.strptime(start_date[:10], "%Y-%m-%d")
+    filtered_payouts = []
+    for payout in payout_list:
+      payout_created = payout.get("created_at", "")
+      try:
+        # Handle formats like "2026-08-20 16:32:40 +0800" or "2026-08-20"
+        payout_dt = datetime.strptime(payout_created[:10], "%Y-%m-%d")
+        if payout_dt >= start_cutoff:
+          filtered_payouts.append(payout)
+      except (ValueError, IndexError):
+        # If date can't be parsed, include the payout to be safe
+        filtered_payouts.append(payout)
+    payout_list = filtered_payouts
 
   analytics = {
     "total_payouts": len(payout_list),
@@ -2067,14 +2100,33 @@ def reconcile_settlement(
 def get_profit_analytics(
   access_token: str,
   start_date: Optional[str] = None,
-  end_date: Optional[str] = None
+  end_date: Optional[str] = None,
+  merchant_expenses: Optional[list] = None,
 ) -> dict:
-  """Calculate profit metrics for a given period."""
+  """Calculate profit metrics for a given period.
+
+  merchant_expenses: optional list of dicts with keys 'sku_id' and 'amount',
+  representing merchant-defined per-SKU costs (product cost, fuel, packaging,
+  etc.) that are deducted from net revenue to compute actual net profit.
+  """
   transactions = get_all_transactions(access_token, start_date, end_date)
   
   total_revenue = Decimal("0")
   total_costs = Decimal("0")
   order_ids = set()
+  
+  # Build expense lookup: sku_id -> total expense amount
+  expense_by_sku: dict[str, Decimal] = {}
+  if merchant_expenses:
+    for exp in merchant_expenses:
+      sku = str(exp.get("sku_id", "")).strip()
+      amt = Decimal(str(exp.get("amount", 0)))
+      if sku and amt > 0:
+        expense_by_sku[sku] = expense_by_sku.get(sku, Decimal("0")) + amt
+  
+  # Track which order items have already had expenses deducted
+  expense_applied: set[str] = set()
+  total_product_expenses = Decimal("0")
   
   for txn in transactions:
     value = txn.get("amount", 0)
@@ -2090,6 +2142,19 @@ def get_profit_analytics(
     # Positive amounts are revenue
     if amount > 0:
       total_revenue += abs(amount)
+      
+      # Match SKU against stored expenses for this order item
+      if expense_by_sku:
+        order_item_no = txn.get("orderItem_no") or txn.get("order_item_no") or ""
+        if order_item_no and order_item_no not in expense_applied:
+          lazada_sku = txn.get("lazada_sku", "")
+          seller_sku = txn.get("seller_sku", "")
+          search_sku = lazada_sku or seller_sku          
+          
+          if any(sku in search_sku for sku in expense_by_sku):
+            print('matched sku: ', sku)
+            total_product_expenses += expense_by_sku[sku]
+            expense_applied.add(order_item_no)
     else:
       # Negative amounts are deductions
       # Actual customer refunds reduce revenue (money returned to buyer)
@@ -2099,7 +2164,10 @@ def get_profit_analytics(
         # All other negative transactions are platform costs/fees
         total_costs += abs(amount)
   
-  net_profit = total_revenue - total_costs
+  # net_revenue = revenue minus platform costs (what was previously net_profit)
+  net_revenue = total_revenue - total_costs
+  # net_profit = net_revenue minus merchant-defined product expenses
+  net_profit = net_revenue - total_product_expenses
   profit_margin = (net_profit / total_revenue * 100) if total_revenue > 0 else 0
   
   period = f"{start_date or 'all'} to {end_date or 'now'}"
@@ -2108,6 +2176,8 @@ def get_profit_analytics(
     "period": period,
     "total_revenue": float(round(total_revenue, 2)),
     "total_costs": float(round(total_costs, 2)),
+    "net_revenue": float(round(net_revenue, 2)),
+    "total_product_expenses": float(round(total_product_expenses, 2)),
     "net_profit": float(round(net_profit, 2)),
     "profit_margin": float(round(profit_margin, 2)),
     "order_count": len(order_ids)
@@ -2174,7 +2244,8 @@ def get_cash_flow_analysis(
 
 def get_financial_dashboard(
   access_token: str,
-  days: int = 30
+  days: int = 30,
+  merchant_expenses: Optional[list] = None,
 ) -> dict:
   """Comprehensive financial dashboard with all key metrics."""
   from datetime import datetime, timedelta
@@ -2188,7 +2259,7 @@ def get_financial_dashboard(
   print('start_date:  ', start_str, "end_date: ", end_str)
   payout_analytics = get_payout_analytics(access_token, start_str, end_str)
   fee_breakdown = calculate_fee_breakdown(access_token, start_str, end_str)
-  profit_metric = get_profit_analytics(access_token, start_str, end_str)
+  profit_metric = get_profit_analytics(access_token, start_str, end_str, merchant_expenses=merchant_expenses)
   cash_flow = get_cash_flow_analysis(access_token, days)
   
   avg_order_value = fee_breakdown["total_revenue"] / profit_metric["order_count"] if profit_metric["order_count"] > 0 else 0
@@ -2200,6 +2271,8 @@ def get_financial_dashboard(
     "upcoming_payouts": payout_analytics["upcoming_amount"],
     "total_fees": fee_breakdown["total_commission"] + fee_breakdown["total_payment_fees"] + fee_breakdown["total_shipping_fees"] + fee_breakdown["total_penalties"] + fee_breakdown["total_promotional_discounts"],
     "total_refunds": fee_breakdown["total_refunds"],
+    "net_revenue": profit_metric["net_revenue"],
+    "total_product_expenses": profit_metric["total_product_expenses"],
     "net_profit": profit_metric["net_profit"],
     "profit_margin": profit_metric["profit_margin"],
     "average_order_value": round(avg_order_value, 2),

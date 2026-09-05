@@ -592,6 +592,8 @@ class ProfitAnalyticsResponse(BaseModel):
     period: str = ""
     total_revenue: float = 0.0
     total_costs: float = 0.0
+    net_revenue: float = 0.0
+    total_product_expenses: float = 0.0
     net_profit: float = 0.0
     profit_margin: float = 0.0
     order_count: int = 0
@@ -630,6 +632,8 @@ class FinancialDashboardResponse(BaseModel):
     upcoming_payouts: float = 0.0
     total_fees: float = 0.0
     total_refunds: float = 0.0
+    net_revenue: float = 0.0
+    total_product_expenses: float = 0.0
     net_profit: float = 0.0
     profit_margin: float = 0.0
     average_order_value: float = 0.0

@@ -1,0 +1,5 @@
+- Each feature area has its own router file under `routers/` that is included from `main.py`, with route handlers delegating work to a corresponding service module under `services/`.
+- Authentication is enforced per-router using a shared `require_auth = [Depends(get_current_user)]` dependency list passed to `app.include_router(..., dependencies=...)` rather than per-endpoint decorators.
+- Database access uses SQLModel's `Session` obtained via the `get_session()` generator dependency injected into services/routers instead of direct engine usage.
+- External API payloads and responses are modeled as Pydantic classes in dedicated files under `models/` (e.g., `daraz_model.py`, `shopify_model.py`, `review_model.py`) separate from ORM models.
+- Configuration is loaded from environment variables via `python-dotenv` at module import time in both `main.py` and `database/connection.py`, with settings centralized in `utils/settings.py`.

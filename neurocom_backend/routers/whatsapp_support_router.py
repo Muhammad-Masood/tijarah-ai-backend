@@ -88,7 +88,6 @@ async def whatsapp_webhook_event(
 
     for event in events:
         if event["type"] == "status":
-            # Status updates (delivered, read) — just log for now
             logger.debug("Message status: %s for %s", event.get("status"), event.get("message_id"))
             continue
 

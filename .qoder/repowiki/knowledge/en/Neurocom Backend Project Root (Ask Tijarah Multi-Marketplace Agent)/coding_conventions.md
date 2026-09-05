@@ -1,4 +1,0 @@
-- Project configuration and dependency pinning are centralized in `pyproject.toml` under `[tool.poetry]` rather than separate requirements files.
-- Development server invocation is abstracted behind a Makefile target so developers start the app with a single `make run` command.
-- Runtime secrets and third-party API credentials are externalized via environment variables documented in `.env.example`.
-- Critical library versions are additionally pinned in top-level marker files (e.g. `1.1.6`, `1.109.1`) alongside `poetry.lock` for traceability.

@@ -1,0 +1,1 @@
+FastAPI 0.115 with Uvicorn ASGI server, SQLModel 0.0.24 over SQLAlchemy with PostgreSQL (psycopg2-binary), PyJWT + bcrypt for authentication, LangChain/LangGraph + OpenAI and Google GenAI for agent orchestration, ChromaDB for vector storage, Redis (hiredis) for caching, and an embedded MCP server (fastmcp) mounted under `/mcp`.

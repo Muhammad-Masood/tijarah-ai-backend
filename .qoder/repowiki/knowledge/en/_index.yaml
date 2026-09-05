@@ -3,25 +3,12 @@ schema_version: 1
 locale: en-US
 branch: master
 nodes_managed: true
-exported_at: "2026-09-03T16:26:28Z"
+exported_at: "2026-09-05T12:56:41Z"
 modules:
     "":
-        dir_name: Neurocom Backend Project Root (Ask Tijarah Multi-Marketplace Agent)
-        title: Neurocom Backend Project Root (Ask Tijarah Multi-Marketplace Agent)
-        scope:
-            - README.md
-            - .gitignore
-            - Makefile
-            - pyproject.toml
-            - poetry.lock
-            - response_1787394617457.json
-            - review_api_dump.txt
-            - review_api_dump2.txt
-            - .env.example
-            - .python-version
-            - 1.1.6
-            - 1.109.1
-            - poetry
+        dir_name: Tijarah AI Backend (FastAPI Service)
+        title: Tijarah AI Backend (FastAPI Service)
+        scope: []
         source_files: []
         children: []
         depends_on: []

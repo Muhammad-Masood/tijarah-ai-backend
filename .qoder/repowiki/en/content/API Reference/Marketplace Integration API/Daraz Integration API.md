@@ -1,3 +1,5 @@
+Based on my analysis of the codebase, I can now update the documentation to reflect the enhanced financial analytics system that incorporates merchant-defined expenses into profit calculations. Here's the updated documentation:
+
 # Daraz Integration API
 
 <cite>
@@ -13,16 +15,18 @@
 - [dependencies.py](file://neurocom_backend/dependencies.py)
 - [reviews_router.py](file://neurocom_backend/routers/reviews_router.py)
 - [reviews_service.py](file://neurocom_backend/services/reviews_service.py)
+- [expense_router.py](file://neurocom_backend/routers/expense_router.py)
+- [expense_service.py](file://neurocom_backend/services/expense_service.py)
+- [expense.py](file://neurocom_backend/database/models/expense.py)
 </cite>
 
 ## Update Summary
 **Changes Made**
-- Added comprehensive financial analytics system with 7 new REST endpoints including financial dashboard, transaction details, payout analytics, fee breakdown, profit analytics, cash flow analysis, and settlement reconciliation
-- Enhanced settlement reconciliation with optional start_date parameter support and improved error handling
-- Updated core components section to include financial analytics capabilities
-- Added detailed financial analytics endpoints documentation with request/response schemas
-- Enhanced category information system documentation with performance optimization details
-- Updated architecture diagrams to reflect new financial analytics flow
+- Enhanced financial analytics system now incorporates merchant-defined expenses into profit calculations, adding net_revenue and total_product_expenses fields for more accurate business profitability insights
+- Added comprehensive expense management endpoints for merchants to define per-SKU costs (product cost, fuel, packaging, etc.)
+- Updated profit calculation logic to distinguish between platform fees and merchant-defined product expenses
+- Enhanced financial dashboard with new metrics showing net revenue after platform costs and net profit after all expenses
+- Added expense tracking and management capabilities through dedicated CRUD endpoints
 
 ## Table of Contents
 1. Introduction
@@ -39,19 +43,19 @@
 This document provides comprehensive API documentation for the Daraz marketplace integration exposed by the backend service. It covers:
 - OAuth authentication flow (authorization code exchange and access token management)
 - Product management endpoints (create, retrieve, category attributes, image migration)
-- **NEW**: Comprehensive financial analytics system with dashboard, transactions, payouts, fees, profit analysis, cash flow, and settlement reconciliation
+- **Enhanced**: Comprehensive financial analytics system with merchant-defined expense tracking, including dashboard, transactions, payouts, fees, profit analysis with net revenue and product expenses, cash flow, and settlement reconciliation
 - Catalog search and product hunting endpoints for automated product discovery
 - Order processing endpoints (orders, tracking, logistics, reverse orders)
 - Review scraping and analysis
 - Payout statements and conversation sessions
 - Request/response schemas, error handling patterns, and rate limiting considerations specific to Daraz API constraints
 
-The integration uses a custom Lazop client to call Daraz APIs, with FastAPI routers exposing secure endpoints that require merchant authentication and a per-request encrypted Daraz access token header. The new financial analytics system provides comprehensive business insights through multiple specialized endpoints, while enhanced category information systems deliver improved user experience with automatic category name enrichment and optimized performance through LRU caching.
+The integration uses a custom Lazop client to call Daraz APIs, with FastAPI routers exposing secure endpoints that require merchant authentication and a per-request encrypted Daraz access token header. The enhanced financial analytics system now provides comprehensive business intelligence through specialized endpoints that aggregate transaction data, calculate platform fees, incorporate merchant-defined product expenses, analyze profits, and reconcile settlements.
 
 ## Project Structure
 Key modules involved in the Daraz integration:
-- Routers: HTTP endpoints under /daraz, /auth, /reviews, and /financial
-- Services: Business logic for Daraz API calls, caching, product normalization, review analysis, **and financial analytics**
+- Routers: HTTP endpoints under /daraz, /auth, /reviews, /financial, and /expenses
+- Services: Business logic for Daraz API calls, caching, product normalization, review analysis, financial analytics, and expense management
 - Models: Pydantic models defining request/response shapes with enhanced category information and financial data structures
 - Lazop SDK wrapper: Low-level HTTP signing and execution against Daraz endpoints
 - Security: JWT-based merchant auth and encrypted token handling
@@ -61,18 +65,22 @@ graph TB
 Client["Client"] --> AuthRouter["/auth (JWT login)"]
 Client --> DarazRouter["/daraz/* (Daraz endpoints)"]
 Client --> FinancialRouter["/financial/* (Financial analytics)"]
+Client --> ExpenseRouter["/expenses/* (Expense management)"]
 Client --> ReviewsRouter["/reviews/* (Review analysis)"]
 AuthRouter --> AuthService["authenticate_merchant"]
 DarazRouter --> DarazService["Lazop calls + business logic"]
 DarazRouter --> CatalogService["Catalog scraping + product hunting"]
 FinancialRouter --> FinancialService["Financial analytics engine"]
+ExpenseRouter --> ExpenseService["Expense management"]
 ReviewsRouter --> ReviewsService["Scrape + analyze reviews"]
 DarazService --> LazopClient["LazopClient.execute()"]
 DarazService --> CategoryLookup["Category Name Lookup Cache"]
 FinancialService --> TransactionEngine["Transaction Processing"]
 FinancialService --> PayoutAnalyzer["Payout Analytics"]
 FinancialService --> FeeCalculator["Fee Breakdown Engine"]
+FinancialService --> ExpenseTracker["Merchant Expense Tracker"]
 CatalogService --> PublicAPI["Public Daraz Catalog API"]
+ExpenseService --> Database["Product Expense Database"]
 DarazService --> Models["Pydantic models with enhanced categories"]
 FinancialService --> FinancialModels["Financial Response Models"]
 DarazRouter --> Security["Decrypt access token"]
@@ -88,6 +96,8 @@ DarazRouter --> Dependencies["Merchant resolution"]
 - [base.py:131-204](file://neurocom_backend/python/lazop/base.py#L131-L204)
 - [security.py:22-43](file://neurocom_backend/utils/security.py#L22-L43)
 - [dependencies.py:14-79](file://neurocom_backend/dependencies.py#L14-L79)
+- [expense_router.py:1-99](file://neurocom_backend/routers/expense_router.py#L1-L99)
+- [expense_service.py:1-98](file://neurocom_backend/services/expense_service.py#L1-L98)
 
 **Section sources**
 - [daraz_router.py:82-447](file://neurocom_backend/routers/daraz_router.py#L82-L447)
@@ -98,20 +108,28 @@ DarazRouter --> Dependencies["Merchant resolution"]
 - [base.py:131-204](file://neurocom_backend/python/lazop/base.py#L131-L204)
 - [security.py:22-43](file://neurocom_backend/utils/security.py#L22-L43)
 - [dependencies.py:14-79](file://neurocom_backend/dependencies.py#L14-L79)
+- [expense_router.py:1-99](file://neurocom_backend/routers/expense_router.py#L1-L99)
+- [expense_service.py:1-98](file://neurocom_backend/services/expense_service.py#L1-L98)
 
 ## Core Components
 - OAuth and Merchant Authentication:
   - POST /auth/login returns a JWT for merchant accounts
   - All Daraz endpoints require a valid merchant JWT plus an encrypted Daraz access token header
-- **NEW**: Comprehensive Financial Analytics System:
-  - GET /financial/dashboard: Comprehensive financial overview with key metrics
+- **Enhanced**: Comprehensive Financial Analytics System with Merchant Expense Tracking:
+  - GET /financial/dashboard: Comprehensive financial overview with key metrics including net revenue and product expenses
   - GET /financial/transactions: Detailed transaction listing with pagination
   - GET /financial/payouts/analytics: Payout analytics broken down by status
   - GET /financial/fees/breakdown: Detailed fee breakdown analysis
-  - GET /financial/profit: Profit and loss analytics for given periods
+  - GET /financial/profit: Profit and loss analytics with merchant-defined expenses included
   - GET /financial/cashflow: Daily cash flow analysis showing inflows/outflows
   - GET /financial/settlement/reconcile/{payout_id}: Settlement reconciliation for specific payouts
-- **NEW**: Enhanced Category Information System:
+- **New**: Merchant Expense Management:
+  - POST /expenses/: Create product expenses (product cost, fuel, packaging, etc.)
+  - GET /expenses/: List all product expenses for authenticated merchant
+  - GET /expenses/{expense_id}: Get specific expense by ID
+  - PUT /expenses/{expense_id}: Update existing expense
+  - DELETE /expenses/{expense_id}: Delete expense
+- **Enhanced**: Enhanced Category Information System:
   - Primary category names automatically populated in product responses
   - LRU-cached category lookup for optimal performance
   - Seamless integration with existing product retrieval endpoints
@@ -150,9 +168,11 @@ DarazRouter --> Dependencies["Merchant resolution"]
 - [daraz_catalog_service.py:109-235](file://neurocom_backend/services/daraz_catalog_service.py#L109-L235)
 - [reviews_router.py:11-42](file://neurocom_backend/routers/reviews_router.py#L11-L42)
 - [reviews_service.py:59-304](file://neurocom_backend/services/reviews_service.py#L59-L304)
+- [expense_router.py:1-99](file://neurocom_backend/routers/expense_router.py#L1-L99)
+- [expense_service.py:1-98](file://neurocom_backend/services/expense_service.py#L1-L98)
 
 ## Architecture Overview
-The system exposes REST endpoints that enforce merchant authentication and per-call Daraz authorization. The Daraz service layer handles API calls through a Lazop client, caches results where appropriate, normalizes payloads, and enforces domain rules (e.g., required size charts). **The new financial analytics system provides comprehensive business intelligence through specialized endpoints that aggregate transaction data, calculate fees, analyze profits, and reconcile settlements.**
+The system exposes REST endpoints that enforce merchant authentication and per-call Daraz authorization. The Daraz service layer handles API calls through a Lazop client, caches results where appropriate, normalizes payloads, and enforces domain rules (e.g., required size charts). **The enhanced financial analytics system now incorporates merchant-defined expenses into profit calculations, providing more accurate business profitability insights through net revenue and total product expenses metrics.**
 
 ```mermaid
 sequenceDiagram
@@ -160,14 +180,25 @@ participant C as "Client"
 participant A as "Auth Router"
 participant D as "Daraz Router"
 participant F as "Financial Router"
+participant E as "Expense Router"
 participant S as "Daraz Service"
 participant FS as "Financial Service"
+participant ES as "Expense Service"
 participant CL as "Category Lookup"
 participant L as "Lazop Client"
 C->>A : POST /auth/login
 A-->>C : JWT (merchant)
-C->>F : GET /financial/dashboard<br/>Header : x-daraz-access-token
-F->>FS : get_financial_dashboard(access_token)
+C->>E : POST /expenses/ (define product costs)
+E->>ES : create_expense()
+ES->>DB : Store expense in database
+DB-->>ES : Expense created
+ES-->>E : Expense response
+C->>F : GET /financial/profit<br/>Header : x-daraz-access-token
+F->>ES : get_merchant_expenses()
+ES->>DB : Fetch merchant expenses
+DB-->>ES : Expense list
+ES-->>F : Merchant expenses
+F->>FS : get_profit_analytics(access_token, merchant_expenses)
 FS->>S : get_all_transactions()
 S->>L : Execute finance API
 L-->>S : Transaction data
@@ -175,15 +206,17 @@ FS->>CL : _category_name_lookup()
 CL->>DB : Fetch cached categories
 DB-->>CL : Category map
 CL-->>FS : Category ID -> Name mapping
-FS->>FS : Calculate fees, profit, cash flow
-FS-->>F : Financial dashboard response
+FS->>FS : Calculate platform fees, merchant expenses, net profit
+FS-->>F : Enhanced profit analytics with net_revenue & total_product_expenses
 F-->>C : Comprehensive financial overview
 ```
 
 **Diagram sources**
 - [auth_router.py:24-37](file://neurocom_backend/routers/auth_router.py#L24-L37)
 - [daraz_router.py:330-397](file://neurocom_backend/routers/daraz_router.py#L330-L397)
+- [expense_router.py:32-99](file://neurocom_backend/routers/expense_router.py#L32-L99)
 - [daraz_service.py:1763-2188](file://neurocom_backend/services/daraz_service.py#L1763-L2188)
+- [expense_service.py:19-98](file://neurocom_backend/services/expense_service.py#L19-L98)
 - [base.py:140-204](file://neurocom_backend/python/lazop/base.py#L140-L204)
 - [security.py:31-43](file://neurocom_backend/utils/security.py#L31-L43)
 - [dependencies.py:17-43](file://neurocom_backend/dependencies.py#L17-L43)
@@ -230,23 +263,29 @@ Common errors:
 - [daraz_router.py:24-78](file://neurocom_backend/routers/daraz_router.py#L24-L78)
 - [security.py:31-43](file://neurocom_backend/utils/security.py#L31-L43)
 
-### **NEW**: Comprehensive Financial Analytics System
-**Updated** Added complete financial analytics system with 7 specialized endpoints for comprehensive business intelligence.
+### **Enhanced**: Comprehensive Financial Analytics System with Merchant Expenses
+**Updated** Enhanced financial analytics system now incorporates merchant-defined expenses into profit calculations for more accurate business profitability insights.
 
 Key features:
-- **Financial Dashboard**: Aggregated view of revenue, payouts, fees, profit margins, and cash flow trends
+- **Financial Dashboard**: Aggregated view of revenue, payouts, fees, net revenue, product expenses, profit margins, and cash flow trends
 - **Transaction Details**: Paginated access to detailed transaction records with date filtering
 - **Payout Analytics**: Status-based breakdown of payouts (paid, upcoming, pending, failed)
 - **Fee Breakdown**: Detailed categorization of platform fees, commissions, shipping costs, and penalties
-- **Profit Analytics**: Net profit calculations with margin analysis and order count tracking
+- **Profit Analytics**: Net profit calculations with merchant-defined expenses, net revenue after platform costs, and margin analysis
 - **Cash Flow Analysis**: Daily inflow/outflow tracking over configurable time periods
 - **Settlement Reconciliation**: Verification of payout amounts against constituent orders
+
+**Enhanced Profit Calculation Logic:**
+- `net_revenue`: Revenue minus platform costs (previously called net_profit)
+- `total_product_expenses`: Sum of merchant-defined expenses matched to sold SKUs
+- `net_profit`: Net revenue minus merchant-defined product expenses (actual bottom-line profit)
+- `profit_margin`: Calculated as (net_profit / total_revenue * 100)
 
 Implementation details:
 - `get_transaction_details()`: Fetches paginated transaction data from Daraz Finance API
 - `get_all_transactions()`: Automatic pagination to retrieve complete transaction history
 - `calculate_fee_breakdown()`: Categorizes fees into commission, payment, shipping, refunds, penalties, and promotional discounts
-- `get_profit_analytics()`: Calculates net profit by distinguishing between revenue reductions (refunds) and platform costs
+- `get_profit_analytics()`: Enhanced to accept merchant_expenses parameter and calculate net_revenue, total_product_expenses, and net_profit
 - `get_cash_flow_analysis()`: Tracks daily cash movements with inflow/outflow classification
 - `reconcile_settlement()`: Verifies payout accuracy by comparing calculated vs. actual amounts
 
@@ -255,28 +294,84 @@ Performance benefits:
 - Decimal arithmetic for precise financial calculations
 - Configurable time ranges for flexible analysis periods
 - Optimized fee categorization with keyword matching
+- SKU-based expense matching with deduplication to prevent double-counting
 
 **Section sources**
 - [daraz_router.py:330-397](file://neurocom_backend/routers/daraz_router.py#L330-L397)
-- [daraz_service.py:1763-2188](file://neurocom_backend/services/daraz_service.py#L1763-L2188)
-- [daraz_model.py:561-638](file://neurocom_backend/models/daraz_model.py#L561-L638)
+- [daraz_service.py:2100-2184](file://neurocom_backend/services/daraz_service.py#L2100-L2184)
+- [daraz_model.py:591-600](file://neurocom_backend/models/daraz_model.py#L591-L600)
 
-#### Financial Analytics Flow
+#### Enhanced Financial Analytics Flow
 ```mermaid
 flowchart TD
 Start(["Financial Dashboard Request"]) --> GetTransactions["Fetch All Transactions"]
-GetTransactions --> ProcessFees["Calculate Fee Breakdown"]
-ProcessFees --> AnalyzeProfits["Compute Profit Metrics"]
-AnalyzeProfits --> TrackCashFlow["Generate Cash Flow Analysis"]
+GetTransactions --> BuildExpenseMap["Build Merchant Expense Map"]
+BuildExpenseMap --> ProcessFees["Calculate Platform Fees"]
+ProcessFees --> CalcNetRevenue["Calculate Net Revenue<br/>(Revenue - Platform Costs)"]
+CalcNetRevenue --> MatchExpenses["Match Merchant Expenses to Sold SKUs"]
+MatchExpenses --> CalcTotalExpenses["Sum Total Product Expenses"]
+CalcTotalExpenses --> CalcNetProfit["Calculate Net Profit<br/>(Net Revenue - Product Expenses)"]
+CalcNetProfit --> TrackCashFlow["Generate Cash Flow Analysis"]
 TrackCashFlow --> AggregateData["Aggregate Key Metrics"]
-AggregateData --> ReturnDashboard["Return Comprehensive Dashboard"]
+AggregateData --> ReturnDashboard["Return Enhanced Dashboard"]
 ```
 
 **Diagram sources**
-- [daraz_service.py:2153-2188](file://neurocom_backend/services/daraz_service.py#L2153-L2188)
+- [daraz_service.py:2100-2184](file://neurocom_backend/services/daraz_service.py#L2100-L2184)
 - [daraz_router.py:330-337](file://neurocom_backend/routers/daraz_router.py#L330-L337)
 
-### **NEW**: Enhanced Category Information System
+### **New**: Merchant Expense Management System
+**New** Added comprehensive expense management system allowing merchants to define per-SKU costs that are deducted from net revenue when calculating actual net profit.
+
+Key features:
+- **Per-SKU Expense Tracking**: Merchants can define costs like product cost, fuel, packaging, etc. for specific SKUs
+- **Platform-Specific Expenses**: Expenses can be tagged by platform (daraz, shopify, both)
+- **Automatic Profit Impact**: Defined expenses are automatically incorporated into profit calculations
+- **Full CRUD Operations**: Complete create, read, update, delete functionality for expense management
+
+**API Endpoints:**
+- POST /expenses/: Create new product expense
+- GET /expenses/: List all expenses with optional filtering by platform and SKU
+- GET /expenses/{expense_id}: Get specific expense by ID
+- PUT /expenses/{expense_id}: Update existing expense
+- DELETE /expenses/{expense_id}: Delete expense
+
+**Data Model:**
+- sku_id: Unique identifier for the product SKU
+- platform: Target platform (daraz, shopify, both)
+- category: Expense type (product_cost, fuel, packaging, etc.)
+- amount: Cost amount (must be positive)
+- description: Optional expense description
+
+Integration with profit calculations:
+- Expenses are matched to sold items by SKU during profit analysis
+- Deduplicated to prevent double-counting of the same expense
+- Applied to net revenue calculation to determine true net profit
+
+**Section sources**
+- [expense_router.py:1-99](file://neurocom_backend/routers/expense_router.py#L1-L99)
+- [expense_service.py:1-98](file://neurocom_backend/services/expense_service.py#L1-L98)
+- [expense.py:1-60](file://neurocom_backend/database/models/expense.py#L1-L60)
+
+#### Expense Management Flow
+```mermaid
+flowchart TD
+Start(["Create Expense"]) --> ValidateInput{"Valid expense data?"}
+ValidateInput --> |No| Error["422 Validation Error"]
+ValidateInput --> |Yes| StoreExpense["Store in Database"]
+StoreExpense --> Success["Return Created Expense"]
+Success --> ProfitCalc["Used in Profit Calculations"]
+ProfitCalc --> MatchSKU["Match to Sold Items by SKU"]
+MatchSKU --> DeductFromNet["Deduct from Net Revenue"]
+DeductFromNet --> FinalProfit["Calculate True Net Profit"]
+```
+
+**Diagram sources**
+- [expense_router.py:32-99](file://neurocom_backend/routers/expense_router.py#L32-L99)
+- [expense_service.py:19-98](file://neurocom_backend/services/expense_service.py#L19-L98)
+- [daraz_service.py:2118-2157](file://neurocom_backend/services/daraz_service.py#L2118-L2157)
+
+### **Enhanced**: Enhanced Category Information System
 **Updated** Added comprehensive category name enrichment system for improved product information display.
 
 Key features:
@@ -321,7 +416,7 @@ SetName --> Return["Return enriched data"]
 - [daraz_service.py:319-355](file://neurocom_backend/services/daraz_service.py#L319-L355)
 - [daraz_service.py:85-108](file://neurocom_backend/services/daraz_service.py#L85-L108)
 
-### **NEW**: Catalog Search and Product Hunting Endpoints
+### **New**: Catalog Search and Product Hunting Endpoints
 Endpoints:
 - POST /catalog/search: Search products by query with pagination, sorting, and price filtering
 - POST /catalog/hunt: Intelligent product discovery based on niches with quality filters
@@ -458,7 +553,7 @@ Rate limiting:
 **Section sources**
 - [daraz_router.py:250-296](file://neurocom_backend/routers/daraz_router.py#L250-L296)
 - [daraz_model.py:326-405](file://neurocom_backend/models/daraz_model.py#L326-405)
-- [daraz_model.py:225-281](file://neurocom_backend/models/daraz_model.py#L225-281)
+- [daraz_model.py:225-281](file://neurocom_backend/models/daraz_model.py#L225-L281)
 
 ### Review Scraping and Analysis
 Endpoints:
@@ -501,9 +596,10 @@ Rate limiting:
 ## Dependency Analysis
 - Routers depend on services for business logic and on security/dependencies for authentication
 - Services depend on Lazop client for API calls and on Pydantic models for validation
-- **NEW**: Financial service depends on transaction processing, payout analysis, and fee calculation engines
-- **NEW**: Catalog service depends on public HTTP requests to Daraz catalog endpoints
-- **NEW**: Category lookup system provides efficient mapping between category IDs and names
+- **Enhanced**: Financial service depends on transaction processing, payout analysis, fee calculation engines, and merchant expense tracking
+- **New**: Expense service depends on database models for storing and retrieving merchant-defined expenses
+- **Enhanced**: Catalog service depends on public HTTP requests to Daraz catalog endpoints
+- **Enhanced**: Category lookup system provides efficient mapping between category IDs and names
 - Lazop client handles signing and HTTP transport
 
 ```mermaid
@@ -511,14 +607,18 @@ graph LR
 DarazRouter --> DarazService
 DarazRouter --> CatalogService
 DarazRouter --> FinancialRouter
+DarazRouter --> ExpenseRouter
 DarazRouter --> Security
 DarazRouter --> Dependencies
 FinancialRouter --> FinancialService
+ExpenseRouter --> ExpenseService
 DarazService --> LazopClient
 DarazService --> CategoryLookup["Category Name Lookup"]
 FinancialService --> TransactionEngine["Transaction Processing"]
 FinancialService --> PayoutAnalyzer["Payout Analytics"]
 FinancialService --> FeeCalculator["Fee Breakdown Engine"]
+FinancialService --> ExpenseTracker["Merchant Expense Tracker"]
+ExpenseService --> Database["Product Expense Database"]
 CatalogService --> PublicAPI
 DarazService --> Models
 ReviewsRouter --> ReviewsService
@@ -531,41 +631,51 @@ CategoryLookup --> LRU["LRU Cache"]
 - [daraz_service.py:35-2188](file://neurocom_backend/services/daraz_service.py#L35-L2188)
 - [daraz_catalog_service.py:1-235](file://neurocom_backend/services/daraz_catalog_service.py#L1-L235)
 - [base.py:131-204](file://neurocom_backend/python/lazop/base.py#L131-L204)
-- [daraz_model.py:1-638](file://neurocom_backend/models/daraz_model.py#L1-L638)
+- [daraz_model.py:1-642](file://neurocom_backend/models/daraz_model.py#L1-L642)
 - [reviews_router.py:11-42](file://neurocom_backend/routers/reviews_router.py#L11-L42)
 - [reviews_service.py:59-304](file://neurocom_backend/services/reviews_service.py#L59-L304)
+- [expense_router.py:1-99](file://neurocom_backend/routers/expense_router.py#L1-L99)
+- [expense_service.py:1-98](file://neurocom_backend/services/expense_service.py#L1-L98)
 
 **Section sources**
 - [daraz_router.py:82-447](file://neurocom_backend/routers/daraz_router.py#L82-L447)
 - [daraz_service.py:35-2188](file://neurocom_backend/services/daraz_service.py#L35-L2188)
 - [daraz_catalog_service.py:1-235](file://neurocom_backend/services/daraz_catalog_service.py#L1-L235)
 - [base.py:131-204](file://neurocom_backend/python/lazop/base.py#L131-L204)
-- [daraz_model.py:1-638](file://neurocom_backend/models/daraz_model.py#L1-L638)
+- [daraz_model.py:1-642](file://neurocom_backend/models/daraz_model.py#L1-L642)
 - [reviews_router.py:11-42](file://neurocom_backend/routers/reviews_router.py#L11-L42)
 - [reviews_service.py:59-304](file://neurocom_backend/services/reviews_service.py#L59-L304)
+- [expense_router.py:1-99](file://neurocom_backend/routers/expense_router.py#L1-L99)
+- [expense_service.py:1-98](file://neurocom_backend/services/expense_service.py#L1-L98)
 
 ## Performance Considerations
 - Caching:
   - Product listings and reviews are cached using Redis-backed fingerprinting; volatile envelope keys like request_id and trace_id are stripped to avoid false cache misses
-  - **NEW**: Category name lookup uses LRU caching with `@lru_cache(maxsize=1)` for optimal performance
-  - **NEW**: Financial analytics benefit from efficient transaction aggregation with automatic pagination
+  - **Enhanced**: Category name lookup uses LRU caching with `@lru_cache(maxsize=1)` for optimal performance
+  - **Enhanced**: Financial analytics benefit from efficient transaction aggregation with automatic pagination
+  - **New**: Merchant expenses are stored in database and retrieved efficiently for profit calculations
 - Concurrency:
   - Reviews fetching uses ThreadPoolExecutor to parallelize per-product review calls
 - Payload normalization:
   - HTML descriptions are cleaned to plain text to reduce payload size and improve readability
 - Image handling:
   - Images are validated for type and size; unsupported hosts fall back to upload rather than migrate
-- **NEW**: Financial analytics performance:
+- **Enhanced**: Financial analytics performance:
   - Decimal arithmetic ensures precise financial calculations
   - Automatic pagination prevents memory issues with large transaction sets
   - Configurable time ranges optimize query performance
   - Efficient fee categorization with keyword matching reduces processing overhead
-- **NEW**: Catalog scraping performance:
+  - SKU-based expense matching with deduplication prevents double-counting
+- **New**: Expense management performance:
+  - Database indexing on merchant_id, sku_id, and platform for fast queries
+  - Efficient filtering by platform and SKU parameters
+  - Minimal overhead for expense lookups during profit calculations
+- **Enhanced**: Catalog scraping performance:
   - Built-in 1.5-second delays between requests to respect Daraz server limits
   - Maximum 50 pages per request to prevent excessive scraping
   - Optional session cookies for improved rate limits
   - Efficient parsing of filter data and subcategories
-- **NEW**: Category enrichment performance:
+- **Enhanced**: Category enrichment performance:
   - Single category tree fetch cached for entire application lifecycle
   - O(1) lookup time for category name resolution
   - Minimal overhead added to existing product operations
@@ -573,24 +683,28 @@ CategoryLookup --> LRU["LRU Cache"]
   - No built-in rate limiter; implement client-side retries with exponential backoff on non-zero codes from Lazop responses
   - Avoid large batch operations during peak hours; use pagination and date filters
 
-[No sources needed since this section provides general guidance]
-
 ## Troubleshooting Guide
 Common issues and resolutions:
 - Missing or invalid Daraz access token:
   - Ensure x-daraz-access-token header is present and corresponds to an active merchant connection
   - Decryption errors return 400; verify encryption key configuration
-- **NEW**: Financial analytics issues:
+- **Enhanced**: Financial analytics issues:
   - Transaction API failures: Check date range parameters and ensure proper access token permissions
   - Payout reconciliation discrepancies: Verify payout ID format and check Daraz API response structure
   - Fee calculation errors: Ensure transaction data contains expected fee_name fields
   - Cash flow analysis gaps: Verify transaction_date format handling for different date formats
   - Settlement reconciliation issues: Check optional start_date parameter usage and error handling improvements
-- **NEW**: Category information issues:
+  - **New**: Merchant expense matching issues: Verify SKU IDs match between expenses and transactions, check expense amounts are positive
+  - **New**: Profit calculation discrepancies: Ensure merchant expenses are properly defined and linked to correct SKUs
+- **New**: Expense management issues:
+  - Expense creation failures: Verify SKU exists and amount is positive
+  - Expense lookup issues: Check merchant_id scoping and platform filtering
+  - Expense updates: Ensure only allowed fields are modified and values meet validation requirements
+- **Enhanced**: Category information issues:
   - Missing category names: Verify category tree is accessible and contains expected data
   - Performance issues: Check LRU cache effectiveness and category tree size
   - Inconsistent category names: Ensure language settings match expected locale
-- **NEW**: Catalog scraping issues:
+- **Enhanced**: Catalog scraping issues:
   - Network timeouts: Increase timeout settings or retry with different headers
   - Rate limiting: Implement exponential backoff and reduce request frequency
   - Empty results: Verify query terms match Daraz catalog terminology
@@ -622,15 +736,16 @@ Error patterns:
 - [daraz_router.py:173-207](file://neurocom_backend/routers/daraz_router.py#L173-L207)
 - [daraz_router.py:213-248](file://neurocom_backend/routers/daraz_router.py#L213-L248)
 - [daraz_router.py:330-397](file://neurocom_backend/routers/daraz_router.py#L330-L397)
+- [expense_router.py:32-99](file://neurocom_backend/routers/expense_router.py#L32-L99)
 - [daraz_service.py:341-350](file://neurocom_backend/services/daraz_service.py#L341-L350)
 - [daraz_service.py:413-446](file://neurocom_backend/services/daraz_service.py#L413-L446)
 - [daraz_service.py:1788-1794](file://neurocom_backend/services/daraz_service.py#L1788-L1794)
 - [daraz_service.py:1853-1858](file://neurocom_backend/services/daraz_service.py#L1853-L1858)
 - [daraz_service.py:1994-2064](file://neurocom_backend/services/daraz_service.py#L1994-L2064)
+- [daraz_service.py:2118-2157](file://neurocom_backend/services/daraz_service.py#L2118-L2157)
+- [expense_service.py:19-98](file://neurocom_backend/services/expense_service.py#L19-L98)
 - [daraz_catalog_service.py:118-127](file://neurocom_backend/services/daraz_catalog_service.py#L118-L127)
 - [reviews_router.py:17-42](file://neurocom_backend/routers/reviews_router.py#L17-L42)
 
 ## Conclusion
-The Daraz integration provides a robust set of endpoints for OAuth-driven merchant authentication, product lifecycle management, **comprehensive financial analytics with dashboard, transactions, payouts, fees, profit analysis, cash flow, and settlement reconciliation**, intelligent product discovery through catalog search and hunting, order processing, review scraping and analysis, payouts, and conversations. The architecture emphasizes secure token handling, strict validation via Pydantic models, efficient caching and concurrency strategies, **and comprehensive business intelligence capabilities through specialized financial endpoints**. **Enhanced category information systems provide improved user experience with automatic category name enrichment and optimized performance through LRU caching**. For production deployments, implement client-side rate limiting and monitoring around Daraz API responses to handle throttling gracefully.
-
-[No sources needed since this section summarizes without analyzing specific files]
+The Daraz integration provides a robust set of endpoints for OAuth-driven merchant authentication, product lifecycle management, **enhanced comprehensive financial analytics with merchant-defined expense tracking, intelligent product discovery through catalog search and hunting, order processing, review scraping and analysis, payouts, and conversations**. The architecture emphasizes secure token handling, strict validation via Pydantic models, efficient caching and concurrency strategies, **and comprehensive business intelligence capabilities through specialized financial endpoints that now incorporate merchant-defined expenses for accurate profitability insights**. **Enhanced category information systems provide improved user experience with automatic category name enrichment and optimized performance through LRU caching**, while the new expense management system allows merchants to track product costs and achieve more accurate profit calculations. For production deployments, implement client-side rate limiting and monitoring around Daraz API responses to handle throttling gracefully.

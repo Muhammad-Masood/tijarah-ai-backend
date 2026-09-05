@@ -476,7 +476,7 @@ def _fetch_all_orders_raw(shop: str, access_token: str) -> list[dict]:
 
     query = """
     query getOrders($cursor: String) {
-      orders(first: 100, after: $cursor, sortKey: CREATED_AT, reverse: true) {
+      orders(first: 100, after: $cursor, sortKey: CREATED_AT, reverse: true, query: "created_at:>=2026-08-07") {
         edges {
           cursor
           node {
@@ -490,7 +490,7 @@ def _fetch_all_orders_raw(shop: str, access_token: str) -> list[dict]:
             totalPriceSet {
               shopMoney { amount currencyCode }
             }
-            customer { id displayName email }
+            customer { id displayName phone }
             lineItems(first: 50) {
               edges {
                 node {

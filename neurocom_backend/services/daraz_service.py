@@ -2280,3 +2280,261 @@ def get_financial_dashboard(
     "recent_payouts": payout_analytics["paid"][:5],
     "cash_flow_trend": cash_flow
   }
+
+
+def _parse_txn_date(txn: dict) -> str:
+  """Extract a YYYY-MM-DD date string from a transaction dict."""
+  raw = txn.get("transaction_date", "") or txn.get("created_at", "")
+  try:
+    if " " in raw and len(raw.split()) == 3:
+      from datetime import datetime as _dt
+      return _dt.strptime(raw, "%d %b %Y").strftime("%Y-%m-%d")
+  except (ValueError, IndexError):
+    pass
+  return raw[:10] if raw else ""
+
+
+def _categorize_fee(fee_name: str) -> str:
+  """Return a canonical fee category key for a lowercased fee_name."""
+  if any(kw in fee_name for kw in ["voucher", "coins discount", "co-funded"]):
+    return "promotional_discounts"
+  if "refund" in fee_name or "return" in fee_name:
+    return "refunds"
+  if "shipping fee" in fee_name or "handling fee" in fee_name:
+    return "shipping_fees"
+  if "payment fee" in fee_name:
+    return "payment_fees"
+  if "commission" in fee_name or "platform fee" in fee_name or "daraz fee" in fee_name:
+    return "commission"
+  if any(kw in fee_name for kw in ["penalty", "fine", "income tax", "withholding"]):
+    return "penalties"
+  return "commission"  # default
+
+
+def get_product_financials(
+  access_token: str,
+  start_date: Optional[str] = None,
+  end_date: Optional[str] = None,
+  merchant_expenses: Optional[list] = None,
+  sort_by: str = "gross_revenue",
+) -> dict:
+  """Per-product financial breakdown with chart-ready data.
+
+  Fetches all transactions, groups them by SKU, computes a full P&L per
+  product, and returns daily trend / fee distribution / top-product chart
+  arrays ready for frontend rendering.
+  """
+  from collections import defaultdict
+
+  transactions = get_all_transactions(access_token, start_date, end_date)
+
+  # -- build per-SKU expense lookup ----------------------------------------
+  expense_by_sku: dict[str, Decimal] = {}
+  if merchant_expenses:
+    for exp in merchant_expenses:
+      sku = str(exp.get("sku_id", "")).strip()
+      amt = Decimal(str(exp.get("amount", 0)))
+      if sku and amt > 0:
+        expense_by_sku[sku] = expense_by_sku.get(sku, Decimal("0")) + amt
+
+  # -- per-product accumulators --------------------------------------------
+  products: dict[str, dict] = {}
+
+  def _ensure(sku: str) -> dict:
+    if sku not in products:
+      products[sku] = {
+        "sku": sku,
+        "product_name": "",
+        "units_sold": 0,
+        "gross_revenue": Decimal("0"),
+        "commission": Decimal("0"),
+        "payment_fees": Decimal("0"),
+        "shipping_fees": Decimal("0"),
+        "penalties": Decimal("0"),
+        "promotional_discounts": Decimal("0"),
+        "refunds": Decimal("0"),
+        "orders": {},
+        "_expense_applied": set(),
+        "product_expenses": Decimal("0"),
+      }
+    return products[sku]
+
+  # -- daily trend accumulators (for chart) --------------------------------
+  daily: dict[str, dict] = defaultdict(lambda: {
+    "revenue": Decimal("0"),
+    "fees": Decimal("0"),
+    "refunds": Decimal("0"),
+  })
+
+  # -- global fee totals (for donut chart) ---------------------------------
+  global_fees: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+
+  # -- single pass over transactions ---------------------------------------
+  for txn in transactions:
+    fee_name = txn.get("fee_name", "").lower()
+    value = txn.get("amount", 0)
+    if isinstance(value, str):
+        value = value.replace(",", "").strip()
+    amount = Decimal(value or "0")
+
+    lazada_sku = txn.get("lazada_sku", "").split("_")[0]
+    seller_sku = txn.get("seller_sku", "").split("-")[0]
+    sku = lazada_sku or seller_sku or "unknown"
+    if sku == "unknown":
+        continue
+    order_no = txn.get("order_no", "")
+    date = _parse_txn_date(txn)
+
+    p = _ensure(sku)
+    if not p["product_name"]:
+        p["product_name"] = txn.get("details", "") or sku
+
+    if amount > 0:
+        p["gross_revenue"] += amount
+        daily[date]["revenue"] += amount
+
+        p["units_sold"] += 1
+        if order_no:
+            p["orders"][order_no] = {
+                "order_no": order_no,
+                "date": date,
+                "price": float(round(amount, 2)),
+                "orderItem_status": txn.get("orderItem_status")
+                    or txn.get("order_item_status") or "",
+            }
+
+        # apply merchant expenses once per order item
+        if expense_by_sku:
+            order_item_no = txn.get("orderItem_no") or txn.get("order_item_no") or ""
+            if order_item_no and order_item_no not in p["_expense_applied"]:
+                search_sku = lazada_sku or seller_sku
+                matched_key = next(
+                    (k for k in expense_by_sku if k in search_sku), None
+                )
+                if matched_key:
+                    p["product_expenses"] += expense_by_sku[matched_key]
+                p["_expense_applied"].add(order_item_no)
+    else:
+        cat = _categorize_fee(fee_name)
+        abs_amt = abs(amount)
+        if cat == "refunds":
+            p["refunds"] += abs_amt
+            daily[date]["refunds"] += abs_amt
+        else:
+            p[cat] += abs_amt
+            daily[date]["fees"] += abs_amt
+            global_fees[cat] += abs_amt
+
+  # -- assemble product list -----------------------------------------------
+  valid_sort = {"gross_revenue", "net_profit", "units_sold", "profit_margin", "net_revenue"}
+  if sort_by not in valid_sort:
+    sort_by = "gross_revenue"
+
+  result_products = []
+  sum_gross = Decimal("0")
+  sum_fees = Decimal("0")
+  sum_refunds = Decimal("0")
+  sum_net_rev = Decimal("0")
+  sum_expenses = Decimal("0")
+  sum_profit = Decimal("0")
+  sum_units = 0
+
+  for sku, p in products.items():
+    total_fees = (
+      p["commission"] + p["payment_fees"] + p["shipping_fees"]
+      + p["penalties"] + p["promotional_discounts"]
+    )
+    net_revenue = p["gross_revenue"] - total_fees - p["refunds"]
+    net_profit = net_revenue - p["product_expenses"]
+    margin = (net_profit / p["gross_revenue"] * 100) if p["gross_revenue"] > 0 else 0
+
+    sum_gross += p["gross_revenue"]
+    sum_fees += total_fees
+    sum_refunds += p["refunds"]
+    sum_net_rev += net_revenue
+    sum_expenses += p["product_expenses"]
+    sum_profit += net_profit
+    sum_units += p["units_sold"]
+
+    result_products.append({
+      "sku": p["sku"],
+      "product_name": p["product_name"],
+      "units_sold": p["units_sold"],
+      "gross_revenue": float(round(p["gross_revenue"], 2)),
+      "commission": float(round(p["commission"], 2)),
+      "payment_fees": float(round(p["payment_fees"], 2)),
+      "shipping_fees": float(round(p["shipping_fees"], 2)),
+      "penalties": float(round(p["penalties"], 2)),
+      "promotional_discounts": float(round(p["promotional_discounts"], 2)),
+      "total_fees": float(round(total_fees, 2)),
+      "refunds": float(round(p["refunds"], 2)),
+      "net_revenue": float(round(net_revenue, 2)),
+      "product_expenses": float(round(p["product_expenses"], 2)),
+      "net_profit": float(round(net_profit, 2)),
+      "profit_margin": float(round(margin, 2)),
+      "orders": sorted(p["orders"].values(), key=lambda o: o["date"]),
+    })
+
+  result_products.sort(key=lambda x: x[sort_by], reverse=True)
+
+  # -- chart: daily trend (line / area chart) ------------------------------
+  daily_trend = []
+  for date in sorted(daily.keys()):
+    d = daily[date]
+    rev = d["revenue"]
+    fees = d["fees"]
+    refs = d["refunds"]
+    daily_trend.append({
+      "date": date,
+      "revenue": float(round(rev, 2)),
+      "fees": float(round(fees, 2)),
+      "refunds": float(round(refs, 2)),
+      "net_profit": float(round(rev - fees - refs, 2)),
+    })
+
+  # -- chart: fee distribution (donut chart) --------------------------------
+  fee_labels = {
+    "commission": "Commission",
+    "payment_fees": "Payment Fees",
+    "shipping_fees": "Shipping Fees",
+    "penalties": "Penalties & Tax",
+    "promotional_discounts": "Promotional Discounts",
+  }
+  fee_distribution = [
+    {"category": fee_labels.get(k, k), "amount": float(round(v, 2))}
+    for k, v in sorted(global_fees.items(), key=lambda x: x[1], reverse=True)
+    if v > 0
+  ]
+
+  # -- chart: top 10 products (bar chart) -----------------------------------
+  top_products_chart = [
+    {
+      "sku": p["sku"],
+      "product_name": (p["product_name"][:50] + "...") if len(p["product_name"]) > 50 else p["product_name"],
+      "gross_revenue": p["gross_revenue"],
+      "net_profit": p["net_profit"],
+      "units_sold": p["units_sold"],
+    }
+    for p in result_products[:10]
+  ]
+
+  period = f"{start_date or 'all'} to {end_date or 'now'}"
+
+  print("result_products: ", result_products)
+  return {
+    "period": period,
+    "total_products": len(result_products),
+    "products": result_products,
+    "summary": {
+      "total_gross_revenue": float(round(sum_gross, 2)),
+      "total_fees": float(round(sum_fees, 2)),
+      "total_refunds": float(round(sum_refunds, 2)),
+      "total_net_revenue": float(round(sum_net_rev, 2)),
+      "total_product_expenses": float(round(sum_expenses, 2)),
+      "total_net_profit": float(round(sum_profit, 2)),
+      "total_units_sold": sum_units,
+    },
+    "daily_trend": daily_trend,
+    "fee_distribution": fee_distribution,
+    "top_products_chart": top_products_chart,
+  }

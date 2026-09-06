@@ -10,7 +10,17 @@
 - [settings.py](file://neurocom_backend/utils/settings.py)
 - [marketplace_router.py](file://neurocom_backend/routers/marketplace_router.py)
 - [marketplace.py](file://neurocom_backend/database/models/marketplace.py)
+- [order.py](file://neurocom_backend/database/models/order.py)
+- [order_service.py](file://neurocom_backend/services/order_service.py)
+- [order_router.py](file://neurocom_backend/routers/order_router.py)
 </cite>
+
+## Update Summary
+**Changes Made**
+- Updated Order Processing section to reflect date filtering optimization with created_at query parameter
+- Updated Customer Contact Information to show phone field instead of email for better mobile communication support
+- Enhanced order processing workflow documentation with new date-based filtering capabilities
+- Updated GraphQL query examples to include phone field in customer data retrieval
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -25,7 +35,9 @@
 10. [Appendices](#appendices)
 
 ## Introduction
-This document provides detailed API documentation for the Shopify marketplace integration endpoints exposed by the backend. It covers store connection setup, product synchronization workflows, inventory management, and order processing capabilities using GraphQL APIs to Shopify. It also documents data transformation between local models and Shopify’s structures, error handling strategies for Shopify API limitations, and common integration scenarios with troubleshooting guidance.
+This document provides detailed API documentation for the Shopify marketplace integration endpoints exposed by the backend. It covers store connection setup, product synchronization workflows, inventory management, and order processing capabilities using GraphQL APIs to Shopify. It also documents data transformation between local models and Shopify's structures, error handling strategies for Shopify API limitations, and common integration scenarios with troubleshooting guidance.
+
+**Updated** Enhanced order processing now includes date filtering optimization and improved customer contact information handling with phone numbers for better mobile communication support.
 
 ## Project Structure
 The Shopify integration is implemented as a FastAPI router that delegates to a service layer which communicates with Shopify via GraphQL. Models define request/response schemas used across the API. Security utilities encrypt/decrypt credentials passed through headers, and settings provide environment-driven configuration.
@@ -62,7 +74,7 @@ Router --> Models["Pydantic Models<br/>request/response schemas"]
 - Inventory Management
   - Enable inventory tracking, activate inventory at a location, and set quantities.
 - Order Processing
-  - Retrieve all orders with pagination and transform line items and pricing.
+  - Retrieve all orders with pagination, date filtering optimization, and enhanced customer contact information including phone numbers for mobile communication.
 - Categories and Collections
   - List taxonomy categories and subcategories; list product collections.
 
@@ -210,9 +222,12 @@ G-->>S : Success
 
 ### Order Processing
 - Retrieve All Orders
-  - Paginates orders sorted by creation date in reverse, extracting line items and money details.
+  - Paginates orders sorted by creation date in reverse with date filtering optimization using `created_at:>=2026-08-07` query parameter.
+  - Enhanced customer contact information includes phone numbers alongside display names for better mobile communication support.
   - Normalizes total price and currency from nested money objects.
   - Uses cached results based on access token fingerprint and shop domain.
+
+**Updated** Order processing now includes optimized date filtering and enhanced customer contact information with phone numbers for mobile communication support.
 
 ```mermaid
 sequenceDiagram
@@ -223,12 +238,12 @@ R->>S : get_all_orders(shop, token)
 alt Cache hit
 S-->>R : Cached orders
 else Cache miss
-loop Pagination
-S->>G : Query orders(first=100, after=cursor)
-G-->>S : Orders edges + pageInfo
-S->>S : Normalize line items and totals
+loop Pagination with Date Filter
+S->>G : Query orders(first=100, after=cursor, sortKey : CREATED_AT, reverse : true, query : "created_at : >=2026-08-07")
+G-->>S : Orders edges + pageInfo with customer.phone
+S->>S : Normalize line items, totals, and customer contact info
 end
-S-->>R : Orders list
+S-->>R : Orders list with phone contacts
 end
 ```
 
@@ -254,9 +269,11 @@ end
 - Product Model
   - Includes identifiers, metadata, images, variants, and optional storefront URL derived from onlineStoreUrl or handle.
 - Order Model
-  - Captures order identifiers, timestamps, statuses, customer info, line items, and monetary totals.
+  - Captures order identifiers, timestamps, statuses, customer info with phone contact, line items, and monetary totals.
 - Category and Collection Models
   - Represent taxonomy categories and collection metadata.
+
+**Updated** Customer contact information now includes phone field alongside email for enhanced mobile communication support.
 
 **Section sources**
 - [shopify_model.py:5-69](file://neurocom_backend/models/shopify_model.py#L5-L69)
@@ -308,13 +325,15 @@ MarketplaceRouter["Marketplace Router"] --> MarketplaceModels["Marketplace Model
   - Product creation batches variant updates and inventory activation to reduce round trips.
 - Timeouts
   - GraphQL requests use explicit timeouts to avoid hanging connections.
+- **Updated** Date Filtering Optimization
+  - Order queries now include date-based filtering (`created_at:>=2026-08-07`) to optimize performance by reducing the dataset size and improving query efficiency.
 
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
 Common issues and resolutions:
 - Missing or invalid encrypted credentials
-  - Symptom: 400 Bad Request with “Invalid encrypted Shopify credentials”.
+  - Symptom: 400 Bad Request with "Invalid encrypted Shopify credentials".
   - Cause: Malformed or tampered header value; decryption fails.
   - Resolution: Ensure the X-Shopify-Access-Token header contains a properly encrypted JSON payload with shop and access_token.
 - Unauthorized access
@@ -329,23 +348,29 @@ Common issues and resolutions:
   - Cause: Validation errors in mutations or queries.
   - Resolution: Inspect the returned userErrors to correct input fields.
 - No locations found
-  - Symptom: 400 Bad Request “No Shopify locations found for this store”.
+  - Symptom: 400 Bad Request "No Shopify locations found for this store".
   - Cause: Store has no configured locations.
   - Resolution: Configure at least one location in Shopify admin before creating products with inventory.
 - Online Store publication not found
-  - Symptom: 404 Not Found “Online Store publication not found”.
+  - Symptom: 404 Not Found "Online Store publication not found".
   - Cause: Missing or misconfigured Online Store sales channel.
   - Resolution: Ensure the Online Store publication exists and is enabled for the shop.
+- **Updated** Order Date Filtering Issues
+  - Symptom: Empty order results or unexpected order filtering.
+  - Cause: Incorrect date format in created_at filter or timezone mismatches.
+  - Resolution: Ensure date format follows ISO 8601 standard (YYYY-MM-DD) and verify timezone settings.
 
 **Section sources**
 - [shopify_router.py:44-61](file://neurocom_backend/routers/shopify_router.py#L44-L61)
 - [shopify_service.py:56-68](file://neurocom_backend/services/shopify_service.py#L56-L68)
 - [shopify_service.py:87-121](file://neurocom_backend/services/shopify_service.py#L87-L121)
 - [shopify_service.py:265-280](file://neurocom_backend/services/shopify_service.py#L265-L280)
-- [shopify_service.py:283-305](file://neurocom_backend/services/shopify_service.py#L283-L305)
+- [shopify_service.py:283-305](file://neurocom_backend/services/shopify_service.py#L283-305)
 
 ## Conclusion
-The Shopify integration provides a robust, secure, and efficient interface for connecting stores, synchronizing products, managing inventory, and retrieving orders via GraphQL. It leverages caching and pagination to handle large datasets while enforcing strict schema validation and error handling. For real-time event processing, consider extending the service layer with webhook handlers that consume Shopify webhooks and update local state accordingly.
+The Shopify integration provides a robust, secure, and efficient interface for connecting stores, synchronizing products, managing inventory, and retrieving orders via GraphQL. It leverages caching and pagination to handle large datasets while enforcing strict schema validation and error handling. Recent enhancements include optimized order processing with date filtering and improved customer contact information with phone numbers for better mobile communication support. For real-time event processing, consider extending the service layer with webhook handlers that consume Shopify webhooks and update local state accordingly.
+
+**Updated** Enhanced order processing capabilities now provide better performance through date filtering optimization and improved customer communication through phone number support.
 
 [No sources needed since this section summarizes without analyzing specific files]
 
@@ -360,7 +385,7 @@ The Shopify integration provides a robust, secure, and efficient interface for c
   - GET /shopify/get_product_by_id?product_id={id}
   - POST /shopify/create_new_product
 - Orders
-  - GET /shopify/get_all_orders
+  - GET /shopify/get_all_orders (with optimized date filtering)
 - Categories and Collections
   - GET /shopify/get_all_categories
   - GET /shopify/get_subcategories/{category_id}
@@ -371,6 +396,8 @@ Authentication:
 
 Environment Variables:
 - SHOPIFY_API_KEY, SHOPIFY_API_SECRET, SHOPIFY_SCOPES, SHOPIFY_CACHE_TTL_SECONDS, SECRET_KEY
+
+**Updated** Order processing now includes enhanced date filtering and customer phone contact information for improved mobile communication support.
 
 **Section sources**
 - [shopify_router.py:69-142](file://neurocom_backend/routers/shopify_router.py#L69-L142)

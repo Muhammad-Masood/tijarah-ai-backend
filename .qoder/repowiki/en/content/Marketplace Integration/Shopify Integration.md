@@ -14,6 +14,12 @@
 - [product.py](file://neurocom_backend/database/models/product.py)
 </cite>
 
+## Update Summary
+**Changes Made**
+- Enhanced order processing with date-based filtering (created_at:>=2026-08-07) for improved performance
+- Switched customer data collection from email to phone numbers in Shopify GraphQL queries
+- Updated customer model to reflect phone number field instead of email
+
 ## Table of Contents
 1. Introduction
 2. Project Structure
@@ -30,7 +36,7 @@
 This document explains the Shopify marketplace integration for the Tijarah AI Backend. It covers OAuth flow, store connection management, API authentication, GraphQL usage patterns for products, orders, inventory, and categories/collections, error handling strategies (including rate limiting and invalid requests), configuration for app setup and credentials, and data synchronization workflows between local database and Shopify stores.
 
 ## Project Structure
-The Shopify integration is implemented as a FastAPI router with service-layer functions that call Shopify’s GraphQL Admin API. Data models define request/response shapes, while caching and security utilities support performance and secure credential handling. The application mounts routers under authentication middleware and exposes endpoints for OAuth initiation, token exchange, and CRUD operations over Shopify resources.
+The Shopify integration is implemented as a FastAPI router with service-layer functions that call Shopify's GraphQL Admin API. Data models define request/response shapes, while caching and security utilities support performance and secure credential handling. The application mounts routers under authentication middleware and exposes endpoints for OAuth initiation, token exchange, and CRUD operations over Shopify resources.
 
 ```mermaid
 graph TB
@@ -71,7 +77,7 @@ Service --> Shopify["Shopify GraphQL Admin API"]
 - [marketplace.py:17-105](file://neurocom_backend/database/models/marketplace.py#L17-L105)
 
 ## Architecture Overview
-The integration uses an OAuth flow to obtain per-store access tokens, which are stored encrypted in the marketplace connection record. Subsequent API calls decrypt the token from the request header and use it to authenticate against Shopify’s GraphQL Admin API. Responses are cached via Redis to reduce upstream load and improve latency.
+The integration uses an OAuth flow to obtain per-store access tokens, which are stored encrypted in the marketplace connection record. Subsequent API calls decrypt the token from the request header and use it to authenticate against Shopify's GraphQL Admin API. Responses are cached via Redis to reduce upstream load and improve latency.
 
 ```mermaid
 sequenceDiagram
@@ -149,7 +155,7 @@ Persist --> Done(["Done"])
 
 ### GraphQL API Usage Patterns
 - Products: Paginated fetch using cursor-based pagination; flattening to normalized schema; optional storefront URL derivation.
-- Orders: Paginated fetch with line items and money objects; normalized totals and currency.
+- Orders: Paginated fetch with line items and money objects; normalized totals and currency; **enhanced with date-based filtering for improved performance**.
 - Categories/Collections: Taxonomy and collection enumeration with pagination.
 - Product creation: Create product with media, set variant price, enable inventory tracking, activate inventory at location, set quantities, and publish to Online Store.
 
@@ -178,6 +184,53 @@ S-->>R : result
 - [shopify_service.py:472-575](file://neurocom_backend/services/shopify_service.py#L472-L575)
 - [shopify_service.py:578-688](file://neurocom_backend/services/shopify_service.py#L578-L688)
 - [shopify_service.py:329-469](file://neurocom_backend/services/shopify_service.py#L329-L469)
+
+### Enhanced Order Processing with Date-Based Filtering
+**Updated** The order processing functionality has been enhanced with date-based filtering to improve performance and reduce data transfer overhead.
+
+- **Date Filtering**: Orders are now filtered using `created_at:>=2026-08-07` in the GraphQL query to retrieve only recent orders, significantly reducing the dataset size and improving query performance.
+- **Performance Benefits**: This filtering approach minimizes API calls and reduces memory usage by focusing on relevant order data within a specific timeframe.
+- **Pagination**: Combined with cursor-based pagination, this ensures efficient retrieval of large order datasets while maintaining optimal performance.
+
+```mermaid
+flowchart TD
+Query["GraphQL Query"] --> Filter["Apply created_at:>=2026-08-07 Filter"]
+Filter --> Pagination["Cursor-based Pagination"]
+Pagination --> Process["Process Order Data"]
+Process --> Transform["Transform to Normalized Schema"]
+Transform --> Cache["Cache Results"]
+```
+
+**Diagram sources**
+- [shopify_service.py:477-512](file://neurocom_backend/services/shopify_service.py#L477-L512)
+
+**Section sources**
+- [shopify_service.py:472-575](file://neurocom_backend/services/shopify_service.py#L472-L575)
+
+### Customer Data Collection Enhancement
+**Updated** Customer data collection has been switched from email addresses to phone numbers for improved privacy and compliance.
+
+- **Phone Number Focus**: The GraphQL query now requests `customer { id displayName phone }` instead of email fields, aligning with privacy best practices and regulatory requirements.
+- **Data Privacy**: Phone numbers provide better contact information while maintaining customer privacy compared to email addresses.
+- **Model Updates**: The customer model structure supports phone number fields for order processing and customer communication.
+
+```mermaid
+sequenceDiagram
+participant S as "Service"
+participant G as "Shopify GraphQL"
+S->>G : Query orders with customer.phone
+G-->>S : Return orders with phone numbers
+S->>S : Process customer phone data
+S->>S : Apply privacy filters
+S-->>S : Return sanitized customer data
+```
+
+**Diagram sources**
+- [shopify_service.py:493](file://neurocom_backend/services/shopify_service.py#L493)
+
+**Section sources**
+- [shopify_service.py:472-575](file://neurocom_backend/services/shopify_service.py#L472-L575)
+- [shopify_model.py:85-89](file://neurocom_backend/models/shopify_model.py#L85-L89)
 
 ### Webhook Implementation for Real-Time Events
 - Current implementation: No webhook endpoints or handlers are present in the codebase.
@@ -267,10 +320,12 @@ Service --> DBModels["database/models/*.py"]
 - Caching: Redis-backed cache-aside reduces Shopify API calls and provides fast reads; background stale-while-revalidate keeps data fresh without blocking requests.
 - Pagination: Cursor-based pagination prevents large payloads and improves throughput.
 - Timeouts: Requests to Shopify include timeouts to avoid hanging connections.
+- **Enhanced Performance**: Date-based filtering in order queries (`created_at:>=2026-08-07`) significantly reduces data transfer and processing time.
 - Recommendations:
   - Implement retry with exponential backoff for transient errors and rate limits (HTTP 429).
   - Batch operations where possible (e.g., bulk variant updates already used).
   - Monitor Redis latency and adjust TTLs based on data volatility.
+  - Leverage date filtering for large datasets to optimize query performance.
 
 [No sources needed since this section provides general guidance]
 
@@ -280,6 +335,7 @@ Service --> DBModels["database/models/*.py"]
 - GraphQL errors: Inspect the returned userErrors to identify field-specific issues during mutations.
 - Rate limiting: If encountering frequent 429 errors, add retries with backoff and reduce request frequency or increase cache TTL.
 - Redis connectivity: Check REDIS_* settings; ensure the cache service is reachable and healthy.
+- **Order Query Performance**: If experiencing slow order queries, verify the date filter is properly configured and consider adjusting the date range based on business requirements.
 
 **Section sources**
 - [shopify_router.py:44-61](file://neurocom_backend/routers/shopify_router.py#L44-L61)
@@ -288,7 +344,7 @@ Service --> DBModels["database/models/*.py"]
 - [redis_cache.py:56-71](file://neurocom_backend/utils/redis_cache.py#L56-L71)
 
 ## Conclusion
-The Tijarah AI Backend integrates with Shopify through a robust OAuth flow, secure credential handling, and efficient GraphQL-based data access with caching. While webhooks are not yet implemented, the existing architecture supports extending real-time event handling. Proper configuration, error handling, and performance tuning will ensure reliable synchronization between Shopify and local systems.
+The Tijarah AI Backend integrates with Shopify through a robust OAuth flow, secure credential handling, and efficient GraphQL-based data access with caching. Recent enhancements include optimized order processing with date-based filtering for improved performance and enhanced customer data collection focusing on phone numbers for better privacy compliance. While webhooks are not yet implemented, the existing architecture supports extending real-time event handling. Proper configuration, error handling, and performance tuning will ensure reliable synchronization between Shopify and local systems.
 
 [No sources needed since this section summarizes without analyzing specific files]
 
@@ -298,7 +354,7 @@ The Tijarah AI Backend integrates with Shopify through a robust OAuth flow, secu
 - OAuth initiation: GET /shopify/get_auth_code?shop=<domain>
 - Token exchange: GET /shopify/get_access_token?code=<code>&shop=<domain>
 - Products: GET /shopify/get_all_products, GET /shopify/get_product_by_id?product_id=<id>, POST /shopify/create_new_product
-- Orders: GET /shopify/get_all_orders
+- Orders: GET /shopify/get_all_orders (now includes date-filtered orders for improved performance)
 - Categories: GET /shopify/get_all_categories, GET /shopify/get_subcategories/{category_id}
 - Collections: GET /shopify/get_all_collections
 
@@ -306,3 +362,15 @@ Authentication: Include X-Shopify-Access-Token header with encrypted JSON contai
 
 **Section sources**
 - [shopify_router.py:69-142](file://neurocom_backend/routers/shopify_router.py#L69-L142)
+
+### Enhanced Order Query Details
+The order processing functionality now includes sophisticated filtering capabilities:
+
+- **Date Range Filtering**: Orders are filtered using `created_at:>=2026-08-07` to focus on recent transactions
+- **Performance Optimization**: Reduced dataset size leads to faster query execution and lower memory usage
+- **Customer Data**: Phone numbers are prioritized over email addresses for privacy compliance
+- **Pagination Support**: Efficient cursor-based pagination handles large order volumes
+
+**Section sources**
+- [shopify_service.py:477-512](file://neurocom_backend/services/shopify_service.py#L477-L512)
+- [shopify_service.py:493](file://neurocom_backend/services/shopify_service.py#L493)

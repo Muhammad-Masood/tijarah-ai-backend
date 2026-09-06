@@ -606,6 +606,73 @@ class CashFlowEntry(BaseModel):
     net: float = 0.0
 
 
+# ---------------------------------------------------------------------------
+# Per-Product Financials Models
+# ---------------------------------------------------------------------------
+
+
+class ProductOrderDetail(BaseModel):
+    """Single order line within a product's financial breakdown."""
+    order_no: str = ""
+    date: str = ""
+    price: float = 0.0
+    orderItem_status: str = ""
+
+
+class ProductFinancials(BaseModel):
+    sku: str = ""
+    product_name: str = ""
+    units_sold: int = 0
+    gross_revenue: float = 0.0
+    commission: float = 0.0
+    payment_fees: float = 0.0
+    shipping_fees: float = 0.0
+    penalties: float = 0.0
+    promotional_discounts: float = 0.0
+    total_fees: float = 0.0
+    refunds: float = 0.0
+    net_revenue: float = 0.0
+    product_expenses: float = 0.0
+    net_profit: float = 0.0
+    profit_margin: float = 0.0
+    orders: List[ProductOrderDetail] = []
+
+
+class DailyProductTrend(BaseModel):
+    """Single data point for the daily revenue/fees/profit chart."""
+    date: str = ""
+    revenue: float = 0.0
+    fees: float = 0.0
+    refunds: float = 0.0
+    net_profit: float = 0.0
+
+
+class FeeSlice(BaseModel):
+    """Single slice for the fee distribution donut chart."""
+    category: str = ""
+    amount: float = 0.0
+
+
+class TopProductBar(BaseModel):
+    """Single bar for the top-products comparison chart."""
+    sku: str = ""
+    product_name: str = ""
+    gross_revenue: float = 0.0
+    net_profit: float = 0.0
+    units_sold: int = 0
+
+
+class ProductFinancialsResponse(BaseModel):
+    period: str = ""
+    total_products: int = 0
+    products: List[ProductFinancials] = []
+    summary: Dict[str, Any] = {}
+    # Chart-ready data
+    daily_trend: List[DailyProductTrend] = []
+    fee_distribution: List[FeeSlice] = []
+    top_products_chart: List[TopProductBar] = []
+
+
 class ReconciledOrder(BaseModel):
     order_id: Any
     gross_value: float = 0.0

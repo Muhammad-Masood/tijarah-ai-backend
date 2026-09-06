@@ -1,11 +1,13 @@
 from fastapi.middleware.cors import CORSMiddleware
 import requests
 from fastapi import FastAPI, Request, Header, UploadFile, File, Body, APIRouter, Depends, HTTPException, status, WebSocket, WebSocketException
-from neurocom_backend.services.daraz_service import lazop_client, get_access_token, get_all_products, get_auth_code, create_new_product, get_category_attributes, migrate_images, get_migrated_images,migrate_image, get_all_categories, get_category_children, get_category_by_id, get_all_orders, get_all_orders_full, trace_order_by_id, get_product_reviews, get_all_reverse_orders_info, get_order_logistic_details, payout_statement, get_orders_with_items, get_order_by_id, get_all_products_reviews, scrape_product_reviews, get_reverse_orders_history, get_returns_insights, get_returns_insights_stream, get_returns_dashboard, get_product_by_id, get_conversations_sessions, get_seller_info, get_transaction_details, get_all_transactions, get_payout_analytics, calculate_fee_breakdown, reconcile_settlement, get_profit_analytics, get_cash_flow_analysis, get_financial_dashboard
+from neurocom_backend.services.daraz_service import lazop_client, get_access_token, get_all_products, get_auth_code, create_new_product, get_category_attributes, migrate_images, get_migrated_images,migrate_image, get_all_categories, get_category_children, get_category_by_id, get_all_orders, get_all_orders_full, trace_order_by_id, get_product_reviews, get_all_reverse_orders_info, get_order_logistic_details, payout_statement, get_orders_with_items, get_order_by_id, get_all_products_reviews, scrape_product_reviews, get_reverse_orders_history, get_returns_insights, get_returns_insights_stream, get_returns_dashboard, get_product_by_id, get_conversations_sessions, get_seller_info, get_transaction_details, get_all_transactions, get_payout_analytics, calculate_fee_breakdown, reconcile_settlement, get_profit_analytics, get_cash_flow_analysis, get_financial_dashboard, get_product_financials
 from neurocom_backend.utils.security import decrypt_value
 from neurocom_backend.utils.sse import sse_stream
 from fastapi.responses import RedirectResponse, JSONResponse, StreamingResponse
-from neurocom_backend.models.daraz_model import DarazProductCreate, DarazGetAllProductsResponse, DarazCategoryAttributesResponse, ReverseOrderInfo, ScrapedProductReviewsResponse, OrdersWithItemsResponse, ReturnsInsightsResponse, ReturnsDashboardResponse, DarazGetProductResponse, OrderWithItems, CatalogSearchRequest, ProductHuntRequest, CatalogSearchResponse, ProductHuntResponse, FinancialDashboardResponse, TransactionDetailsResponse, PayoutAnalyticsResponse, FeeBreakdownResponse, ProfitAnalyticsResponse, CashFlowEntry, ReconcileSettlementResponse
+from neurocom_backend.models.daraz_model import DarazProductCreate, DarazGetAllProductsResponse, DarazCategoryAttributesResponse, ReverseOrderInfo, ScrapedProductReviewsResponse, OrdersWithItemsResponse, ReturnsInsightsResponse, ReturnsDashboardResponse, DarazGetProductResponse, OrderWithItems, CatalogSearchRequest, ProductHuntRequest, CatalogSearchResponse, ProductHuntResponse, FinancialDashboardResponse, TransactionDetailsResponse, PayoutAnalyticsResponse, FeeBreakdownResponse, ProfitAnalyticsResponse, CashFlowEntry, ReconcileSettlementResponse, ProductFinancialsResponse
+from neurocom_backend.models.keyword_model import KeywordAnalysisRequest, KeywordAnalysisResponse
+from neurocom_backend.services.keyword_analysis_service import analyze_keywords_for_product, analyze_keywords_for_product_stream
 from pydantic import BaseModel, model_validator
 from typing import Annotated, Optional, Any, List
 import os
@@ -397,6 +399,24 @@ async def cashflow_analysis(
     """Get cash flow analysis showing daily inflows and outflows."""
     return get_cash_flow_analysis(access_token, days)
 
+@router.get('/financial/products', response_model=ProductFinancialsResponse)
+async def product_financials(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    sort_by: str = "gross_revenue",
+    access_token: str = Depends(get_daraz_access_token),
+    merchant: Merchant = Depends(get_current_user),
+    db: Session = Depends(get_session),
+):
+    """Get per-product financial breakdown sorted by sales with chart data."""
+    expenses = get_merchant_expenses(db, merchant.id, platform="daraz")
+    expense_dicts = [{"sku_id": e.sku_id, "amount": e.amount} for e in expenses]
+    return get_product_financials(
+        access_token, start_date, end_date,
+        merchant_expenses=expense_dicts,
+        sort_by=sort_by,
+    )
+
 @router.get('/financial/settlement/reconcile/{payout_id}', response_model=ReconcileSettlementResponse)
 async def reconcile_payout(
     payout_id: str,
@@ -455,3 +475,42 @@ async def product_hunt(payload: ProductHuntRequest):
         min_reviews=payload.min_reviews,
         max_price=payload.max_price,
     )
+
+
+@router.post('/keyword-analysis')
+async def keyword_analysis(
+    payload: KeywordAnalysisRequest,
+    access_token: str = Depends(get_daraz_access_token),
+):
+    """Analyze SEO keywords for a merchant's product.
+
+    Extracts seed keywords, builds a catalog of competing products,
+    filters by semantic relevance, mines candidate keywords via
+    TF-IDF + LLM, and scores them by relevance vs. competition.
+
+    Set ``stream: true`` in the request body to receive incremental
+    SSE progress events instead of waiting for the full result.
+    """
+    try:
+        if payload.stream:
+            return StreamingResponse(
+                sse_stream(analyze_keywords_for_product_stream(
+                    item_id=payload.item_id,
+                    access_token=access_token,
+                    max_iterations=payload.max_iterations,
+                    max_catalog_size=payload.max_catalog_size,
+                )),
+                media_type="text/event-stream",
+            )
+
+        return analyze_keywords_for_product(
+            item_id=payload.item_id,
+            access_token=access_token,
+            max_iterations=payload.max_iterations,
+            max_catalog_size=payload.max_catalog_size,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("Keyword analysis failed for item_id=%d", payload.item_id)
+        raise HTTPException(status_code=500, detail=f"Keyword analysis failed: {str(e)}")

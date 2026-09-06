@@ -1,0 +1,23 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    POETRY_VERSION=2.4.1 \
+    POETRY_VIRTUALENVS_CREATE=false
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libexpat1 \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir "poetry==$POETRY_VERSION"
+
+COPY pyproject.toml poetry.lock ./
+
+RUN poetry install --only main --no-interaction --no-ansi
+
+COPY neurocom_backend ./neurocom_backend
+
+CMD ["sh", "-c", "uvicorn neurocom_backend.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

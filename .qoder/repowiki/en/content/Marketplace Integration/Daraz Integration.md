@@ -12,6 +12,14 @@
 - [marketplace_service.py](file://neurocom_backend/services/marketplace_service.py)
 </cite>
 
+## Update Summary
+**Changes Made**
+- Added comprehensive per-product financial analytics system with detailed profit/loss breakdown for individual SKUs
+- Documented new `/financial/products` endpoint with chart-ready data for frontend rendering
+- Added documentation for enhanced financial models including ProductOrderDetail, ProductFinancials, DailyProductTrend, FeeSlice, TopProductBar, and ProductFinancialsResponse
+- Updated financial endpoints section with new profit analytics, cash flow analysis, and settlement reconciliation capabilities
+- Enhanced financial dashboard functionality with merchant expense integration
+
 ## Table of Contents
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
@@ -25,7 +33,7 @@
 10. [Appendices](#appendices)
 
 ## Introduction
-This document explains the Daraz marketplace integration for the Tijarah AI Backend. It covers OAuth authentication, all exposed endpoints for product management, orders, logistics, categories, and reviews, image migration workflows with batch operations and progress tracking, error handling strategies, configuration requirements, and streaming support for large datasets such as returns insights.
+This document explains the Daraz marketplace integration for the Tijarah AI Backend. It covers OAuth authentication, all exposed endpoints for product management, orders, logistics, categories, reviews, and comprehensive financial analytics including per-product profit/loss breakdowns, cash flow analysis, and settlement reconciliation. The integration supports image migration workflows with batch operations and progress tracking, error handling strategies, configuration requirements, and streaming support for large datasets such as returns insights.
 
 ## Project Structure
 The Daraz integration is implemented across a FastAPI router, a service layer that calls the Daraz API via a Lazop client, Pydantic models for request/response validation, and utilities for caching and streaming. The application mounts routers under a common prefix and enforces merchant-scoped access to encrypted Daraz tokens stored in the database.
@@ -59,6 +67,7 @@ Router --> SSE["SSE Streamer"]
 - Returns and insights: Reverse orders info/history, returns insights (sync and stream), dashboard ranking.
 - Reviews: Seller API reviews and storefront scraping.
 - Images: Single and batch migration/upload with validation and fallbacks.
+- **Financial Analytics**: Per-product profit/loss breakdown, cash flow analysis, settlement reconciliation, and comprehensive financial dashboards.
 - Streaming: Server-Sent Events for long-running analytics.
 
 **Section sources**
@@ -98,7 +107,7 @@ R-->>C : {access_token}
 ### OAuth Authentication Flow
 - Authorization redirect: Builds the Daraz authorize URL using app key and callback URL from environment variables.
 - Token exchange: Exchanges authorization code for an access token via the Lazop client.
-- Merchant-scoped token resolution: For protected endpoints, the router decrypts the encrypted token associated with the authenticated merchant’s active Daraz connection.
+- Merchant-scoped token resolution: For protected endpoints, the router decrypts the encrypted token associated with the authenticated merchant's active Daraz connection.
 
 ```mermaid
 flowchart TD
@@ -272,6 +281,53 @@ end
 - [daraz_service.py:1192-1550](file://neurocom_backend/services/daraz_service.py#L1192-L1550)
 - [daraz_model.py:220-460](file://neurocom_backend/models/daraz_model.py#L220-L460)
 
+### Financial Analytics System
+
+#### Per-Product Financial Breakdown
+The system provides comprehensive per-product financial analytics with detailed profit/loss breakdown for individual SKUs. It fetches all transactions, groups them by SKU, computes a full P&L per product, and returns chart-ready data for frontend rendering.
+
+**Key Features:**
+- **SKU-level Profit/Loss**: Calculates gross revenue, platform fees, refunds, and merchant expenses per SKU
+- **Chart-Ready Data**: Provides daily trends, fee distribution, and top products charts
+- **Merchant Expense Integration**: Incorporates merchant-defined costs (product cost, packaging, shipping) per SKU
+- **Flexible Sorting**: Sort products by gross revenue, net profit, units sold, or other metrics
+
+```mermaid
+sequenceDiagram
+participant C as "Client"
+participant R as "Router"
+participant S as "Service"
+participant T as "Transactions"
+participant E as "Expenses"
+C->>R : GET /financial/products?sort_by=gross_revenue
+R->>S : get_product_financials(access_token, start_date, end_date, sort_by)
+S->>T : get_all_transactions()
+S->>E : get_merchant_expenses()
+S->>S : Group by SKU, calculate P&L
+S->>S : Generate chart data (daily_trend, fee_distribution, top_products)
+S-->>R : ProductFinancialsResponse
+R-->>C : {products, summary, daily_trend, fee_distribution, top_products_chart}
+```
+
+**Diagram sources**
+- [daraz_router.py:402-418](file://neurocom_backend/routers/daraz_router.py#L402-L418)
+- [daraz_service.py:2314-2540](file://neurocom_backend/services/daraz_service.py#L2314-L2540)
+- [daraz_model.py:614-673](file://neurocom_backend/models/daraz_model.py#L614-L673)
+
+#### Cash Flow Analysis
+Provides daily cash flow analysis showing inflows and outflows over a configurable period (default 30 days). Tracks transaction dates in multiple formats and calculates net cash flow per day.
+
+#### Settlement Reconciliation
+Reconciles specific payouts with their constituent orders to verify payout accuracy. Compares calculated payout amounts against actual payouts and identifies discrepancies.
+
+#### Comprehensive Financial Dashboard
+Aggregates all financial metrics including total revenue, payouts, fees, refunds, net profit, and average order value. Integrates payout analytics, fee breakdown, profit metrics, and cash flow trends into a unified dashboard view.
+
+**Section sources**
+- [daraz_router.py:381-428](file://neurocom_backend/routers/daraz_router.py#L381-L428)
+- [daraz_service.py:2100-2540](file://neurocom_backend/services/daraz_service.py#L2100-L2540)
+- [daraz_model.py:596-709](file://neurocom_backend/models/daraz_model.py#L596-L709)
+
 ### WebSocket Support
 - The router defines helpers to resolve encrypted access tokens over WebSocket connections, enabling secure real-time features tied to merchant scope. While no dedicated WebSocket endpoint is mounted here, the pattern supports future real-time order updates or streaming integrations.
 
@@ -310,6 +366,7 @@ Router --> SSE["utils/sse.py"]
 - Batch processing: Order details are requested in batches to minimize round trips.
 - HTML cleanup: Descriptions are stripped to plain text only when necessary to avoid heavy parsing on cache hits.
 - Image constraints: Enforce JPEG/PNG and 1 MB limit to prevent oversized payloads and invalid uploads.
+- **Financial calculations**: Use Decimal arithmetic for precise monetary calculations and efficient grouping algorithms for large transaction sets.
 
 [No sources needed since this section provides general guidance]
 
@@ -321,6 +378,7 @@ Common issues and how they are handled:
 - Image migration failures: Handles E302 by falling back to direct upload; validates content types and sizes; returns 415/413 for unsupported formats or sizes.
 - Network failures: Lazop client logs HTTP errors and raises exceptions; SSE streams wrap generator errors into final error events.
 - Rate limits: Not explicitly implemented in this codebase; consider adding retry/backoff around Lazop calls if needed.
+- **Financial calculation errors**: Transaction parsing handles multiple date formats and currency string formats; merchant expense matching uses fuzzy SKU comparison.
 
 **Section sources**
 - [daraz_router.py:24-78](file://neurocom_backend/routers/daraz_router.py#L24-L78)
@@ -333,7 +391,7 @@ Common issues and how they are handled:
 - [sse.py:22-33](file://neurocom_backend/utils/sse.py#L22-L33)
 
 ## Conclusion
-The Daraz integration provides a robust set of endpoints for product, order, logistics, category, and review operations, with strong validation, caching, and streaming capabilities. OAuth flows are straightforward, and merchant-scoped token resolution ensures secure multi-tenant usage. Image migration supports both direct URLs and storage paths with fallbacks. Streaming SSE enables responsive handling of large datasets like returns insights.
+The Daraz integration provides a robust set of endpoints for product, order, logistics, category, and review operations, with strong validation, caching, and streaming capabilities. OAuth flows are straightforward, and merchant-scoped token resolution ensures secure multi-tenant usage. Image migration supports both direct URLs and storage paths with fallbacks. The comprehensive financial analytics system delivers detailed per-product profit/loss breakdowns, cash flow analysis, and settlement reconciliation with chart-ready data for frontend visualization. Streaming SSE enables responsive handling of large datasets like returns insights.
 
 [No sources needed since this section summarizes without analyzing specific files]
 
@@ -385,9 +443,27 @@ Environment variables used by the integration:
   - POST /daraz/migrate_image
   - POST /daraz/migrate_images
   - GET /daraz/migrate_images/result?batch_id=...
-- Finance/Chat:
-  - GET /daraz/get_payout
+- **Financial Analytics**:
+  - GET /daraz/financial/profit?start_date=&end_date=
+  - GET /daraz/financial/cashflow?days=30
+  - GET /daraz/financial/products?start_date=&end_date=&sort_by=gross_revenue
+  - GET /daraz/financial/settlement/reconcile/{payout_id}?start_date=...
+- Chat:
   - GET /daraz/conversations/sessions
+  - GET /daraz/get_seller_info
 
 **Section sources**
-- [daraz_router.py:85-329](file://neurocom_backend/routers/daraz_router.py#L85-L329)
+- [daraz_router.py:85-517](file://neurocom_backend/routers/daraz_router.py#L85-L517)
+
+### Financial Analytics Models
+The financial analytics system uses the following Pydantic models for structured data validation:
+
+- **ProductOrderDetail**: Represents individual order lines within product financial breakdowns
+- **ProductFinancials**: Contains comprehensive P&L data for individual SKUs including revenue, fees, expenses, and profit margins
+- **DailyProductTrend**: Chart-ready data points for daily revenue/fees/profit visualization
+- **FeeSlice**: Individual slices for fee distribution donut charts
+- **TopProductBar**: Bar chart data for top product comparisons
+- **ProductFinancialsResponse**: Complete response structure containing products, summary metrics, and chart data
+
+**Section sources**
+- [daraz_model.py:614-673](file://neurocom_backend/models/daraz_model.py#L614-L673)

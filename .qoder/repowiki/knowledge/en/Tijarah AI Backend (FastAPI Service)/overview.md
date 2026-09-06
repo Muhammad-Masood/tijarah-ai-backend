@@ -1,1 +1,0 @@
-FastAPI-based backend for the Tijarah AI platform that exposes REST APIs and an embedded MCP SSE server for marketplace integrations, chat agents, and merchant operations.

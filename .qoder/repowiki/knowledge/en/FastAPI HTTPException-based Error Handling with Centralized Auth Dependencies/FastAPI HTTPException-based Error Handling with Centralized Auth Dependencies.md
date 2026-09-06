@@ -1,75 +1,54 @@
 ---
 kind: error_handling
-name: FastAPI HTTPException-based Error Handling with Centralized Auth Dependencies
+name: FastAPI HTTPException-based error handling with centralized auth dependencies
 category: error_handling
 scope:
     - '**'
 source_files:
     - neurocom_backend/dependencies.py
-    - neurocom_backend/main.py
     - neurocom_backend/routers/auth_router.py
-    - neurocom_backend/routers/daraz_router.py
-    - neurocom_backend/routers/customer_support_router.py
-    - neurocom_backend/routers/reviews_router.py
-    - neurocom_backend/routers/shopify_router.py
-    - neurocom_backend/routers/product_listing_router.py
-    - neurocom_backend/routers/storage_router.py
+    - neurocom_backend/services/order_service.py
     - neurocom_backend/utils/security.py
+    - neurocom_backend/main.py
+    - neurocom_backend/mcp_server/customer_support/main.py
+    - neurocom_backend/mcp_server/client.py
 ---
 
 ## Overview
 
-The repository uses FastAPI's built-in `HTTPException` and `WebSocketException` as the primary error signaling mechanism. There is no custom exception hierarchy, no centralized exception-to-JSON mapper, and no global `exception_handler` registered on the app. Errors are raised inline in routers and dependencies and let FastAPI convert them to JSON responses automatically.
+The Tijarah AI backend uses FastAPI's built-in `HTTPException` as the primary mechanism for signaling errors to clients. There is no custom exception hierarchy, no global exception handler registered via `@app.exception_handler`, and no dedicated `errors/` package. Errors are raised inline in routers and services and rely on FastAPI's default JSON error response format.
 
-## Core Components
+## Authentication & Authorization Errors
 
-### Authentication & Authorization Errors (`neurocom_backend/dependencies.py`)
+- **Centralized in `neurocom_backend/dependencies.py`**: The `get_current_user` dependency constructs a single `credentials_exception = HTTPException(status_code=401, detail="Could not validate credentials", headers={"WWW-Authenticate": "Bearer"})` and reuses it across JWT decode failures (`jwt.PyJWTError`, `ValueError`) and missing merchant lookups. This ensures consistent 401 responses with the `WWW-Authenticate: Bearer` header required by OAuth2.
+- A WebSocket counterpart `get_current_user_ws` raises `WebSocketException(code=WS_1008_POLICY_VIOLATION)` instead of `HTTPException` when authorization fails over WebSockets.
+- Role checks use `require_roles(*roles)`, which raises `HTTPException(status_code=403, detail="You do not have permission to perform this action")` when a user lacks the required role.
+- All routers opt into authentication via `app.include_router(..., dependencies=[Depends(get_current_user)])`, so unauthorized access to protected routes is handled uniformly at the dependency layer.
 
-All auth-related failures funnel through two shared exceptions created inside dependency functions:
+## Business Logic Errors
 
-- `get_current_user` builds a local `HTTPException(status_code=401_UNAUTHORIZED, detail="Could not validate credentials", headers={"WWW-Authenticate": "Bearer"})` and raises it for invalid JWTs, missing subjects, non-merchant accounts, or unknown merchant IDs. The same pattern is used by `_resolve_merchant`, which centralizes token decoding via `utils.security.decode_access_token` and re-raises the same `credentials_exception` on `jwt.PyJWTError` / `ValueError`.
-- `get_current_user_ws` is the WebSocket counterpart; it reads the `Authorization` header directly (because `OAuth2PasswordBearer` requires an HTTP request) and raises a `WebSocketException(code=WS_1008_POLICY_VIOLATION, reason="Could not validate credentials")`.
-- `require_roles(*roles)` is a reusable role-checker dependency that raises `HTTPException(403_FORBIDDEN, detail="You do not have permission to perform this action")` when `current_user.role` is not in the allowed set. A prebuilt `require_admin = require_roles(UserRole.admin)` is provided.
+- Services raise `HTTPException` directly for domain-level failures. For example, `order_service.update_order_service`, `delete_order_by_id`, and `get_order_by_id` all raise `HTTPException(status_code=404, detail="Order not found")` when a requested order does not exist.
+- The auth router raises `HTTPException(status_code=401, detail="Incorrect email or password", headers={"WWW-Authenticate": "Bearer"})` when login credentials are invalid.
+- There is no consistent pattern for other business errors (e.g., validation failures, duplicate entries); most services appear to return data without raising exceptions, leaving error signaling inconsistent across modules.
 
-These dependencies are attached globally to routers via `app.include_router(..., dependencies=require_auth)` in `main.py`, so every endpoint under those routers inherits the 401/403 behavior without per-endpoint checks.
+## External / Runtime Errors
 
-### Router-Level Errors
+- **Lifespan startup**: In `main.py`, the WhatsApp scheduler start is wrapped in `try/except Exception` and logged via `logging.getLogger(__name__).warning("WhatsApp scheduler failed to start", exc_info=True)` rather than failing the app startup — a graceful degradation choice.
+- **MCP SSE server** (`mcp_server/customer_support/main.py`): The SSE request handler wraps the MCP session run in `try/except Exception` and prints the error; there is no structured logging or error response.
+- **MCP client** (`mcp_server/client.py`): `get_tools` catches `Exception` and returns `None` after printing an error message, treating external tool discovery failures as non-fatal.
+- **Security utilities** (`utils/security.py`): `_get_fernet()` raises `RuntimeError("SECRET_KEY is not configured")` if the encryption key is missing — a process-level configuration error that will bubble up during import/use.
 
-Routers raise domain-specific `HTTPException`s with explicit status codes:
+## Middleware & Global Handling
 
-| File | Pattern | Example |
-|---|---|---|
-| `routers/auth_router.py` | 401 on bad login | `HTTPException(401, detail="Incorrect email or password", headers={"WWW-Authenticate": "Bearer"})` |
-| `routers/daraz_router.py` | 401 missing token, 403 unauthorized connection, 400 invalid encrypted token, 422 upstream API rejection, 502 invalid response shape | `_resolve_daraz_access_token` validates presence, ownership, and decryption; downstream calls map Daraz `code != "0"` responses into 422 payloads carrying `daraz_code`, `daraz_message`, `daraz_details`, `request_id` |
-| `routers/shopify_router.py` | 401/403/422 for Shopify OAuth flow errors | Similar structure to Daraz router |
-| `routers/reviews_router.py` | 400 for missing reviews, 500 for AI analysis failure | Catches service exceptions and wraps them |
-| `routers/customer_support_router.py` | Generic `except Exception as e: raise HTTPException(500, str(e))` | Broad catch-all around MCP client calls |
-| `routers/forecast_router.py` | Same broad catch-all pattern |
-| `routers/product_listing_router.py` | `raise HTTPException(502, f"Listing generation failed: {exc}") from exc` — preserves chain via `from exc` |
-| `routers/storage_router.py` | 409 duplicate connection, 415 unsupported image type |
+- No custom middleware transforms or logs request/response errors.
+- No `@app.exception_handler(Exception)` is defined; FastAPI's default exception handler produces standard JSON error responses with `detail` and `status_code` fields.
+- CORS middleware is configured but unrelated to error handling.
 
-### WebSocket Error Handling
+## Conventions Observed
 
-`dependencies.get_current_user_ws` and `routers/daraz_router.get_daraz_access_token_ws` both convert `HTTPException` into `WebSocketException(code=WS_1008_POLICY_VIOLATION, reason=...)`. This is the only place where HTTP errors are bridged to the WebSocket protocol.
-
-### Utility Exceptions
-
-`utils/security.py` raises a bare `RuntimeError("SECRET_KEY is not configured")` if encryption keys are missing during Fernet initialization. This is an internal invariant check rather than a user-facing error.
-
-## Architecture & Conventions Observed
-
-1. **No custom exception classes** — all business and transport errors are expressed as `fastapi.HTTPException` (or `WebSocketException`).
-2. **Auth errors are centralized** in `dependencies.py`; routers never construct their own 401/403 credential exceptions — they reuse the shared `credentials_exception` variable.
-3. **External API failures are mapped to specific HTTP codes**: upstream validation problems become 422, malformed upstream responses become 502, client input problems become 400/403/409/415.
-4. **Upstream error context is preserved**: Daraz/Shopify failures include nested dicts with `daraz_code`, `daraz_message`, `daraz_details`, `request_id` so callers can surface diagnostic data.
-5. **Broad `except Exception` catch blocks** appear in a few routers (`customer_support_router`, `forecast_router`) that wrap MCP/LLM calls; these swallow the original traceback and return a flat 500 string — inconsistent with the more structured mapping elsewhere.
-6. **No global exception handler** is registered in `main.py`; FastAPI's default exception handling is relied upon.
-7. **CORS middleware** is the only cross-cutting middleware added; there is no logging, tracing, or error-reporting middleware.
-8. **Pydantic model validators** raise plain `ValueError` (e.g., `MigrateImageRequest.require_source`) and let FastAPI translate them into 422 validation errors.
-
-## Constraints & Rules
-
-- Authentication failures must go through `get_current_user` / `get_current_user_ws` so that the correct `WWW-Authenticate` header or WebSocket close code is emitted — ad-hoc 401s in routers bypass this convention.
-- Role checks should use `require_roles(...)` rather than manual `if current_user.role not in roles` branches, keeping the 403 message uniform.
-- When wrapping third-party SDK errors (Daraz, Shopify), preserve the original exception via `from exc` (seen in `product_listing_router.py`) so tracebacks remain debuggable.
-- External API responses are validated before being returned; any deviation from the expected shape triggers an `HTTPException` rather than propagating raw upstream objects.
+1. Use `fastapi.HTTPException` with explicit `status_code` and `detail` for all client-facing errors.
+2. Authentication failures consistently include `headers={"WWW-Authenticate": "Bearer"}` to comply with OAuth2 expectations.
+3. Centralize credential resolution in `dependencies.py` so routers/services never construct their own 401 exceptions.
+4. Non-fatal background task failures (scheduler, MCP tools) are caught and logged/printed rather than propagated.
+5. Configuration errors (missing `SECRET_KEY`) raise `RuntimeError` at module level.
+6. There is no unified error model or standardized error envelope returned to clients beyond FastAPI's default `HTTPException` JSON shape.

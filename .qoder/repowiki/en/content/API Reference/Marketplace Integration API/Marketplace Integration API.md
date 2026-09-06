@@ -9,12 +9,23 @@
 - [marketplace_service.py](file://neurocom_backend/services/marketplace_service.py)
 - [daraz_service.py](file://neurocom_backend/services/daraz_service.py)
 - [shopify_service.py](file://neurocom_backend/services/shopify_service.py)
+- [keyword_analysis_service.py](file://neurocom_backend/services/keyword_analysis_service.py)
+- [keyword_model.py](file://neurocom_backend/models/keyword_model.py)
+- [sse.py](file://neurocom_backend/utils/sse.py)
 - [marketplace.py](file://neurocom_backend/database/models/marketplace.py)
 - [daraz_model.py](file://neurocom_backend/models/daraz_model.py)
 - [shopify_model.py](file://neurocom_backend/models/shopify_model.py)
 - [dependencies.py](file://neurocom_backend/dependencies.py)
 - [redis_cache.py](file://neurocom_backend/utils/redis_cache.py)
 </cite>
+
+## Update Summary
+**Changes Made**
+- Added comprehensive documentation for the new SEO keyword analysis endpoint `/keyword-analysis`
+- Documented both synchronous and streaming modes via Server-Sent Events (SSE)
+- Added detailed explanation of the keyword analysis pipeline and scoring algorithm
+- Updated architecture diagrams to include the new keyword analysis component
+- Enhanced error handling section with keyword analysis specific errors
 
 ## Table of Contents
 1. Introduction
@@ -28,7 +39,7 @@
 9. Conclusion
 
 ## Introduction
-This document provides comprehensive API documentation for marketplace integration endpoints supporting Daraz and Shopify. It covers marketplace connection management, product synchronization, order processing, inventory updates, OAuth flows, webhook considerations, rate limiting guidance, and error handling for marketplace API failures. It also includes examples of marketplace-specific data structures and synchronization workflows.
+This document provides comprehensive API documentation for marketplace integration endpoints supporting Daraz and Shopify. It covers marketplace connection management, product synchronization, order processing, inventory updates, OAuth flows, webhook considerations, rate limiting guidance, and error handling for marketplace API failures. It also includes examples of marketplace-specific data structures and synchronization workflows. **Updated**: The API now includes a powerful SEO keyword analysis endpoint that provides comprehensive keyword discovery and scoring capabilities with both synchronous and streaming modes.
 
 ## Project Structure
 The application is a FastAPI service that exposes:
@@ -36,6 +47,7 @@ The application is a FastAPI service that exposes:
 - Platform-specific routers for Daraz and Shopify to perform OAuth, fetch products/orders, create products, and manage inventory.
 - Services that implement marketplace integrations, caching, and data transformation.
 - Pydantic models defining request/response schemas for both marketplaces.
+- **New**: Advanced SEO keyword analysis service with hybrid NLP + LLM capabilities and real-time streaming support.
 
 ```mermaid
 graph TB
@@ -45,10 +57,12 @@ Main --> DarazRouter["Daraz Router<br/>/daraz/*"]
 Main --> ShopifyRouter["Shopify Router<br/>/shopify/*"]
 MarketRouter --> MarketSvc["Marketplace Service"]
 DarazRouter --> DarazSvc["Daraz Service"]
+DarazRouter --> KeywordSvc["Keyword Analysis Service"]
 ShopifyRouter --> ShopifySvc["Shopify Service"]
 MarketSvc --> DB["Database Models<br/>marketplace.py"]
 DarazSvc --> Cache["Redis Cache<br/>redis_cache.py"]
 ShopifySvc --> Cache
+KeywordSvc --> SSE["Server-Sent Events<br/>sse.py"]
 ```
 
 **Diagram sources**
@@ -59,6 +73,8 @@ ShopifySvc --> Cache
 - [marketplace_service.py:236-301](file://neurocom_backend/services/marketplace_service.py#L236-L301)
 - [daraz_service.py:92-104](file://neurocom_backend/services/daraz_service.py#L92-L104)
 - [shopify_service.py:222-230](file://neurocom_backend/services/shopify_service.py#L222-L230)
+- [keyword_analysis_service.py:963-1167](file://neurocom_backend/services/keyword_analysis_service.py#L963-L1167)
+- [sse.py:1-33](file://neurocom_backend/utils/sse.py#L1-L33)
 - [redis_cache.py:1-22](file://neurocom_backend/utils/redis_cache.py#L1-L22)
 
 **Section sources**
@@ -74,6 +90,7 @@ ShopifySvc --> Cache
   - Product catalog operations (list, get by ID), category attributes, image migration/upload.
   - Order retrieval, order details, logistics, reverse orders, payouts, conversations.
   - Reviews scraping and insights.
+  - **New**: SEO keyword analysis with comprehensive discovery and scoring.
 - Shopify Integration
   - OAuth flow to obtain access token.
   - GraphQL-based product, order, category, collection queries.
@@ -96,6 +113,7 @@ The system uses a layered architecture:
 - Services encapsulate business logic and marketplace API interactions.
 - Models define Pydantic schemas for validation and serialization.
 - Caching reduces external API load using Redis-backed cache-aside with background refresh.
+- **New**: Streaming support via Server-Sent Events for long-running keyword analysis processes.
 
 ```mermaid
 sequenceDiagram
@@ -103,9 +121,11 @@ participant C as "Client"
 participant M as "Marketplace Router"
 participant MS as "Marketplace Service"
 participant DS as "Daraz Service"
+participant KS as "Keyword Analysis Service"
 participant SS as "Shopify Service"
 participant DB as "Database"
 participant RC as "Redis Cache"
+participant SSE as "SSE Stream"
 C->>M : POST /marketplace/{id}/connect
 M->>MS : connect_marketplace(payload, merchant)
 MS->>DB : Save encrypted credentials
@@ -117,6 +137,15 @@ DS->>DS : Call Daraz Seller API
 DS->>RC : Store transformed payload
 end
 DS-->>C : Products response
+C->>KS : POST /daraz/keyword-analysis (stream=true)
+KS->>SSE : StreamingResponse with progress events
+loop Pipeline stages
+KS->>KS : Extract seed keywords
+KS->>KS : Build catalog & filter by similarity
+KS->>KS : Mine & cluster keywords
+KS->>SSE : yield "progress", "seed_keywords", etc.
+end
+SSE-->>C : Real-time progress updates
 C->>SS : GET /shopify/get_all_products (with x-shopify-access-token)
 SS->>RC : get_or_refresh(...)
 alt Cache miss
@@ -133,6 +162,8 @@ SS-->>C : Products response
 - [daraz_service.py:92-104](file://neurocom_backend/services/daraz_service.py#L92-L104)
 - [shopify_router.py:92-97](file://neurocom_backend/routers/shopify_router.py#L92-L97)
 - [shopify_service.py:222-230](file://neurocom_backend/services/shopify_service.py#L222-L230)
+- [keyword_analysis_service.py:963-1167](file://neurocom_backend/services/keyword_analysis_service.py#L963-L1167)
+- [sse.py:1-33](file://neurocom_backend/utils/sse.py#L1-L33)
 - [redis_cache.py:1-22](file://neurocom_backend/utils/redis_cache.py#L1-L22)
 
 ## Detailed Component Analysis
@@ -144,7 +175,7 @@ Endpoints:
 - GET /marketplace/{id} — Get marketplace details
 - PUT /marketplace/{id} — Update marketplace metadata (admin only)
 - DELETE /marketplace/{id} — Delete marketplace (admin only)
-- GET /marketplace/connections — List merchant’s connected stores
+- GET /marketplace/connections — List merchant's connected stores
 - DELETE /marketplace/connections/{connection_id} — Disconnect store
 - POST /marketplace/{marketplace_id}/connect — Connect a store (OAuth code or direct token)
 - POST /marketplace/publish-to-connected-stores — Publish a product to all connected stores
@@ -182,7 +213,7 @@ Notes:
 
 **Section sources**
 - [daraz_router.py:91-105](file://neurocom_backend/routers/daraz_router.py#L91-L105)
-- [shopify_router.py:69-89](file://neurocom_backend/routers/shopify_router.py#L69-L89)
+- [shopify_router.py:69-89](file://neurocom_backend/routers/shopify_router.py#L69-89)
 - [marketplace_service.py:178-234](file://neurocom_backend/services/marketplace_service.py#L178-L234)
 
 ### Product Synchronization
@@ -235,6 +266,62 @@ Error handling:
 - [shopify_service.py:578-688](file://neurocom_backend/services/shopify_service.py#L578-L688)
 - [shopify_model.py:22-47](file://neurocom_backend/models/shopify_model.py#L22-L47)
 - [shopify_model.py:96-133](file://neurocom_backend/models/shopify_model.py#L96-L133)
+
+### SEO Keyword Analysis
+
+#### New Endpoint: POST /daraz/keyword-analysis
+**Updated** Added comprehensive SEO keyword analysis endpoint with both synchronous and streaming modes.
+
+**Request Schema:**
+- `item_id`: Integer - Daraz item_id of the merchant's own product
+- `max_iterations`: Integer (default: 4, range: 1-8) - Number of iterative expansion rounds
+- `max_catalog_size`: Integer (default: 500, range: 50-2000) - Cap on total catalog products before filtering
+- `stream`: Boolean (default: false) - If true, stream progress events via SSE
+
+**Response Schema:**
+- `user_product`: Object - Merchant's product info (title, description, price, etc.)
+- `seed_keywords`: Array - Initial keywords extracted via LLM + NLP
+- `total_catalog_size`: Integer - Total products scraped across all keyword searches
+- `total_relevant_products`: Integer - Products that passed embedding similarity filter
+- `winning_keywords`: Array - Keywords sorted by winning_score descending
+- `repeat_products`: Array - Products appearing in 3+ keyword result sets
+- `iterations_run`: Integer - Number of expansion iterations performed
+
+**Streaming Mode (SSE):**
+When `stream: true`, the endpoint returns Server-Sent Events with real-time progress updates:
+- `progress`: Stage information with descriptive messages
+- `product_fetched`: User product information
+- `seed_keywords`: Extracted seed keywords with sources
+- `catalog_built`: Catalog statistics and competition data
+- `similarity_filter_done`: Filtering results with relevant products
+- `keywords_mined`: Candidate keywords discovered
+- `keywords_clustered`: Keyword clusters by semantic similarity
+- `graph_built`: Product-keyword graph communities
+- `clusters_scored`: Scored keyword clusters
+- `expansion_done`: Iterative expansion results
+- `result`: Final complete analysis result
+
+**Pipeline Process:**
+1. **Seed Keyword Extraction**: Hybrid approach using LLM semantic understanding and NLP statistical analysis
+2. **Catalog Building**: Search Daraz public catalog using seed keywords
+3. **Adaptive Filtering**: Filter products by semantic relevance using percentile-based thresholds
+4. **Keyword Mining**: Extract candidate keywords via TF-IDF and LLM long-tail generation
+5. **Keyword Clustering**: Group semantically similar keywords to discover buyer intents
+6. **Graph Analysis**: Build product-keyword bipartite graph with community detection
+7. **Scoring Algorithm**: Calculate winning scores based on relevance vs competition
+8. **Iterative Expansion**: Expand catalog with top-scoring new keyword clusters
+9. **Repeat Product Tracking**: Identify strong competitors appearing across multiple searches
+
+**Error Handling:**
+- Missing product title/description returns 400 with validation error
+- API failures during keyword analysis return 500 with detailed error messages
+- Network timeouts or service unavailability handled gracefully with appropriate error responses
+
+**Section sources**
+- [daraz_router.py:480-517](file://neurocom_backend/routers/daraz_router.py#L480-L517)
+- [keyword_analysis_service.py:963-1167](file://neurocom_backend/services/keyword_analysis_service.py#L963-L1167)
+- [keyword_model.py:19-79](file://neurocom_backend/models/keyword_model.py#L19-L79)
+- [sse.py:1-33](file://neurocom_backend/utils/sse.py#L1-L33)
 
 ### Order Processing
 
@@ -293,10 +380,12 @@ Data models:
 ### Rate Limiting Considerations
 - Caching:
   - Both Daraz and Shopify product/order endpoints use Redis-backed cache-aside with background stale-while-revalidate to reduce external API calls.
+- **New**: Keyword analysis endpoints are resource-intensive and may benefit from request throttling.
 - Best practices:
   - Respect marketplace rate limits by batching requests where possible.
   - Use exponential backoff on transient errors.
   - Monitor cache hit ratios and adjust TTLs based on traffic patterns.
+  - Consider implementing rate limiting for keyword analysis requests due to their computational intensity.
 
 **Section sources**
 - [redis_cache.py:1-22](file://neurocom_backend/utils/redis_cache.py#L1-L22)
@@ -308,6 +397,7 @@ Data models:
   - Invalid category attributes or product creation issues return 422 with diagnostic details including daraz_code, daraz_message, and daraz_details.
   - Image migration failures return 413/415/502 depending on cause.
   - General upstream errors return 502 with message.
+  - **New**: Keyword analysis failures return 400 for validation errors and 500 for processing errors with detailed context.
 - Shopify
   - GraphQL userErrors returned as 400 with structured error details.
   - Network failures return 502 with response text.
@@ -315,6 +405,7 @@ Data models:
 **Section sources**
 - [daraz_router.py:139-159](file://neurocom_backend/routers/daraz_router.py#L139-L159)
 - [daraz_router.py:213-248](file://neurocom_backend/routers/daraz_router.py#L213-L248)
+- [daraz_router.py:480-517](file://neurocom_backend/routers/daraz_router.py#L480-L517)
 - [daraz_service.py:391-446](file://neurocom_backend/services/daraz_service.py#L391-L446)
 - [shopify_service.py:41-68](file://neurocom_backend/services/shopify_service.py#L41-L68)
 - [shopify_service.py:329-469](file://neurocom_backend/services/shopify_service.py#L329-L469)
@@ -324,6 +415,7 @@ Data models:
 - Platform routers depend on services for marketplace API calls.
 - Services depend on models for schema validation and on Redis cache for performance.
 - Database models define marketplace entities and relationships.
+- **New**: Keyword analysis service depends on OpenAI/OpenRouter APIs for embeddings and LLM processing.
 
 ```mermaid
 graph LR
@@ -332,12 +424,16 @@ Deps --> DR["Daraz Router"]
 Deps --> SR["Shopify Router"]
 MR --> MSvc["Marketplace Service"]
 DR --> DSvc["Daraz Service"]
+DR --> KASvc["Keyword Analysis Service"]
 SR --> SSVc["Shopify Service"]
 MSvc --> DBM["Marketplace Models"]
 DSvc --> DM["Daraz Models"]
+KASvc --> KM["Keyword Models"]
 SSVc --> SM["Shopify Models"]
 DSvc --> RC["Redis Cache"]
 SSVc --> RC
+KASvc --> SSE["SSE Utilities"]
+KASvc --> AI["OpenAI/OpenRouter APIs"]
 ```
 
 **Diagram sources**
@@ -348,6 +444,9 @@ SSVc --> RC
 - [marketplace_service.py:236-301](file://neurocom_backend/services/marketplace_service.py#L236-L301)
 - [daraz_service.py:92-104](file://neurocom_backend/services/daraz_service.py#L92-L104)
 - [shopify_service.py:222-230](file://neurocom_backend/services/shopify_service.py#L222-L230)
+- [keyword_analysis_service.py:1-1167](file://neurocom_backend/services/keyword_analysis_service.py#L1-L1167)
+- [keyword_model.py:1-79](file://neurocom_backend/models/keyword_model.py#L1-L79)
+- [sse.py:1-33](file://neurocom_backend/utils/sse.py#L1-L33)
 - [marketplace.py:17-105](file://neurocom_backend/database/models/marketplace.py#L17-L105)
 - [daraz_model.py:20-460](file://neurocom_backend/models/daraz_model.py#L20-L460)
 - [shopify_model.py:22-133](file://neurocom_backend/models/shopify_model.py#L22-L133)
@@ -359,8 +458,13 @@ SSVc --> RC
 ## Performance Considerations
 - Use Redis-backed caching for product and order reads to minimize external API calls.
 - Prefer batch operations where available (e.g., Daraz image migration batch).
-- Stream large datasets via Server-Sent Events when supported (e.g., returns insights).
+- Stream large datasets via Server-Sent Events when supported (e.g., returns insights, keyword analysis).
 - Avoid unnecessary transformations by leveraging cache-hit paths.
+- **New**: Keyword analysis is computationally intensive and benefits from:
+  - Streaming responses for better user experience during long processing times
+  - Adaptive threshold filtering to reduce unnecessary API calls
+  - Efficient embedding calculations with batch processing
+  - Intelligent catalog size limits to prevent excessive resource usage
 
 [No sources needed since this section provides general guidance]
 
@@ -379,12 +483,18 @@ Common issues and resolutions:
   - For unsupported hosts, use direct upload instead of migration.
 - Shopify GraphQL errors:
   - Inspect userErrors in responses to identify field-level issues.
+- **New**: Keyword analysis issues:
+  - Ensure product has valid title and description for analysis
+  - Check API rate limits for OpenAI/OpenRouter services
+  - Monitor streaming connection stability for SSE responses
+  - Validate input parameters (max_iterations, max_catalog_size) within acceptable ranges
 
 **Section sources**
 - [daraz_router.py:24-79](file://neurocom_backend/routers/daraz_router.py#L24-L79)
 - [shopify_router.py:44-62](file://neurocom_backend/routers/shopify_router.py#L44-L62)
 - [daraz_service.py:391-446](file://neurocom_backend/services/daraz_service.py#L391-L446)
 - [shopify_service.py:41-68](file://neurocom_backend/services/shopify_service.py#L41-L68)
+- [keyword_analysis_service.py:963-1167](file://neurocom_backend/services/keyword_analysis_service.py#L963-L1167)
 
 ## Conclusion
-This API provides robust marketplace integration capabilities for Daraz and Shopify, covering connection management, product synchronization, order processing, and inventory updates. It leverages secure credential storage, caching for performance, and comprehensive error handling to ensure reliable operations. Follow the documented endpoints and data models to integrate effectively and maintain high availability under varying marketplace constraints.
+This API provides robust marketplace integration capabilities for Daraz and Shopify, covering connection management, product synchronization, order processing, and inventory updates. **Updated**: The addition of the comprehensive SEO keyword analysis endpoint significantly enhances the platform's value proposition by providing merchants with advanced keyword discovery, competitive analysis, and strategic insights through both synchronous and streaming interfaces. The system leverages secure credential storage, caching for performance, comprehensive error handling, and real-time streaming capabilities to ensure reliable operations while maintaining high availability under varying marketplace constraints.

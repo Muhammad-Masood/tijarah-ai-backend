@@ -3,11 +3,11 @@ schema_version: 1
 locale: en-US
 branch: master
 nodes_managed: true
-exported_at: "2026-09-05T16:24:51Z"
+exported_at: "2026-09-06T16:46:02Z"
 modules:
     "":
-        dir_name: Tijarah AI Backend (FastAPI Service)
-        title: Tijarah AI Backend (FastAPI Service)
+        dir_name: Tijarah AI Backend (FastAPI + SQLModel + MCP)
+        title: Tijarah AI Backend (FastAPI + SQLModel + MCP)
         scope: []
         source_files: []
         children: []

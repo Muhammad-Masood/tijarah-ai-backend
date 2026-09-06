@@ -18,7 +18,6 @@ COPY pyproject.toml poetry.lock README.md ./
 
 RUN poetry install --only main --no-interaction --no-ansi --no-root
 
-# Force a completely clean charset-normalizer installation
 RUN pip uninstall -y charset-normalizer && \
     pip install --no-cache-dir "charset-normalizer==3.4.1"
 

@@ -2,15 +2,25 @@
 
 <cite>
 **Referenced Files in This Document**
-- [README.md](file://README.md)
-- [Makefile](file://Makefile)
+- [dockerfile](file://dockerfile)
 - [pyproject.toml](file://pyproject.toml)
+- [Makefile](file://Makefile)
+- [README.md](file://README.md)
 - [main.py](file://neurocom_backend/main.py)
 - [settings.py](file://neurocom_backend/utils/settings.py)
 - [connection.py](file://neurocom_backend/database/connection.py)
 - [redis_cache.py](file://neurocom_backend/utils/redis_cache.py)
 - [.env.example](file://.env.example)
 </cite>
+
+## Update Summary
+**Changes Made**
+- Updated Docker build section with comprehensive multi-stage build implementation
+- Added specific Dockerfile configuration details including Python 3.11-slim base image
+- Enhanced production deployment guidance with Poetry 2.4.1 integration
+- Updated environment variable configuration for containerized deployments
+- Added system dependencies and optimization techniques
+- Enhanced health check and monitoring sections for containerized environments
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -25,7 +35,7 @@
 10. [Appendices](#appendices)
 
 ## Introduction
-This document provides containerization and deployment guidance for the Tijarah AI Backend (Neurocom Backend). It covers Docker image creation with multi-stage builds, Kubernetes deployment manifests, Helm chart structure, CI/CD pipelines using GitHub Actions, scaling and load balancing strategies, health checks, rollback procedures, blue-green deployments, zero-downtime updates, monitoring with Prometheus and Grafana, and logging aggregation with an ELK stack or similar. The guidance is tailored to the application’s FastAPI server, database migrations, Redis caching, and environment configuration as implemented in the codebase.
+This document provides comprehensive containerization and deployment guidance for the Tijarah AI Backend (Neurocom Backend). It covers Docker image creation with optimized multi-stage builds using Python 3.11-slim, Kubernetes deployment manifests, Helm chart structure, CI/CD pipelines using GitHub Actions, scaling and load balancing strategies, health checks, rollback procedures, blue-green deployments, zero-downtime updates, monitoring with Prometheus and Grafana, and logging aggregation with an ELK stack or similar. The guidance is tailored to the application's FastAPI server, database migrations, Redis caching, and environment configuration as implemented in the codebase.
 
 ## Project Structure
 The backend is a FastAPI application that:
@@ -47,24 +57,24 @@ F --> I[".env.example keys"]
 ```
 
 **Diagram sources**
-- [main.py:16-37](file://neurocom_backend/main.py#L16-L37)
+- [main.py:19-47](file://neurocom_backend/main.py#L19-L47)
 - [connection.py:9-23](file://neurocom_backend/database/connection.py#L9-L23)
-- [settings.py:11-28](file://neurocom_backend/utils/settings.py#L11-L28)
+- [settings.py:11-37](file://neurocom_backend/utils/settings.py#L11-L37)
 - [redis_cache.py:56-71](file://neurocom_backend/utils/redis_cache.py#L56-L71)
 
 **Section sources**
-- [README.md:1-6](file://README.md#L1-L6)
-- [Makefile:1-2](file://Makefile#L1-L2)
-- [pyproject.toml:8-35](file://pyproject.toml#L8-L35)
-- [main.py:16-45](file://neurocom_backend/main.py#L16-L45)
-- [settings.py:11-28](file://neurocom_backend/utils/settings.py#L11-L28)
+- [README.md:23-32](file://README.md#L23-L32)
+- [Makefile:1-3](file://Makefile#L1-L3)
+- [pyproject.toml:8-36](file://pyproject.toml#L8-L36)
+- [main.py:19-47](file://neurocom_backend/main.py#L19-L47)
+- [settings.py:11-37](file://neurocom_backend/utils/settings.py#L11-L37)
 - [connection.py:9-23](file://neurocom_backend/database/connection.py#L9-L23)
 
 ## Core Components
 - Application entrypoint and lifecycle:
   - FastAPI app initializes CORS middleware, mounts MCP SSE, defines root and health endpoints, and runs database migrations during lifespan.
 - Configuration:
-  - Environment-driven settings for secrets, JWT, Redis, Shopify, Supabase, and cache TTLs.
+  - Environment-driven settings for secrets, JWT, Redis, Shopify, Supabase, WhatsApp, and cache TTLs.
 - Database:
   - Engine created from DB_CONNECTION_STRING; migration creates tables and applies schema adjustments on startup.
 - Caching:
@@ -73,11 +83,11 @@ F --> I[".env.example keys"]
 Operational implications:
 - Health check readiness depends on successful DB migration and connectivity.
 - Redis availability affects performance-sensitive routes that rely on caching.
-- External integrations (Shopify, OpenAI, Supabase) require correct environment variables.
+- External integrations (Shopify, OpenAI, Supabase, WhatsApp) require correct environment variables.
 
 **Section sources**
-- [main.py:16-45](file://neurocom_backend/main.py#L16-L45)
-- [settings.py:11-28](file://neurocom_backend/utils/settings.py#L11-L28)
+- [main.py:19-47](file://neurocom_backend/main.py#L19-L47)
+- [settings.py:11-37](file://neurocom_backend/utils/settings.py#L11-L37)
 - [connection.py:9-23](file://neurocom_backend/database/connection.py#L9-L23)
 - [redis_cache.py:56-71](file://neurocom_backend/utils/redis_cache.py#L56-L71)
 
@@ -90,13 +100,14 @@ subgraph "Container"
 API["FastAPI + Uvicorn<br/>main.py"]
 MIG["Migration Runner<br/>connection.py"]
 REDIS["Redis Client<br/>redis_cache.py"]
+ENV["Environment Config<br/>.env.example"]
 end
 subgraph "Cluster"
 K8S["Kubernetes Service/Ingress"]
 MON["Prometheus/Grafana"]
 LOG["ELK Stack"]
 end
-EXT["External Services<br/>OpenAI, Shopify, Supabase"]
+EXT["External Services<br/>OpenAI, Shopify, Supabase, WhatsApp"]
 DB["PostgreSQL<br/>DB_CONNECTION_STRING"]
 K8S --> API
 API --> MIG
@@ -108,42 +119,58 @@ API --> LOG
 ```
 
 **Diagram sources**
-- [main.py:16-45](file://neurocom_backend/main.py#L16-L45)
+- [main.py:19-47](file://neurocom_backend/main.py#L19-L47)
 - [connection.py:9-23](file://neurocom_backend/database/connection.py#L9-L23)
 - [redis_cache.py:56-71](file://neurocom_backend/utils/redis_cache.py#L56-L71)
-- [settings.py:11-28](file://neurocom_backend/utils/settings.py#L11-L28)
+- [settings.py:11-37](file://neurocom_backend/utils/settings.py#L11-L37)
 
 ## Detailed Component Analysis
 
-### Docker Image Build (Multi-stage)
-Recommended approach:
-- Stage 1: Builder
-  - Use a Python base image matching .python-version.
-  - Install Poetry and dependencies into an isolated directory.
-  - Generate a lock file and install production-only dependencies.
-- Stage 2: Runtime
-  - Use a minimal Python image.
-  - Copy only the compiled wheels and application code.
-  - Set non-root user, expose port 8000, and run Uvicorn with production flags.
+### Docker Image Build (Optimized Multi-stage)
+The application uses a comprehensive Dockerfile with optimized build process:
+
+**Base Image Configuration:**
+- Uses `python:3.11-slim` for minimal footprint
+- Sets environment variables for optimal Python behavior:
+  - `PYTHONDONTWRITEBYTECODE=1` prevents .pyc file generation
+  - `PYTHONUNBUFFERED=1` ensures immediate log output
+  - `POETRY_VERSION=2.4.1` specifies exact Poetry version
+  - `POETRY_VIRTUALENVS_CREATE=false` disables virtual environment creation
+
+**System Dependencies:**
+- Installs required system packages: `libexpat1` and `gcc` for native extensions
+- Cleans apt cache to reduce image size
+
+**Build Process:**
+- Stage 1: Install Poetry 2.4.1 and project dependencies
+- Stage 2: Copy application code and run with Uvicorn
+
+**Production Deployment:**
+- Runs Uvicorn with configurable port via `${PORT:-8000}` environment variable
+- Hosts on `0.0.0.0` for container networking
+- Exposes port 8000 by default
 
 Key build inputs:
-- pyproject.toml for dependency declarations.
-- .python-version for consistent Python version.
-- Makefile command to start the server.
+- pyproject.toml for dependency declarations
+- poetry.lock for deterministic builds
+- Makefile command to start the server
 
 Runtime behavior:
-- Uvicorn serves the FastAPI app defined in main.py.
-- On startup, lifespan triggers database migrations.
-- Health endpoint available at /health for readiness probes.
+- Uvicorn serves the FastAPI app defined in main.py
+- On startup, lifespan triggers database migrations
+- Health endpoint available at /health for readiness probes
 
 Environment variables required at runtime:
-- See .env.example for all keys (e.g., DB_CONNECTION_STRING, SECRET_KEY, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, REDIS_HOST/PORT/USERNAME/PASSWORD/SSL, SHOPIFY_* keys, SUPABASE_* keys, OPENAI_API_KEY, SQL_ECHO).
+- See .env.example for all keys (e.g., DB_CONNECTION_STRING, SECRET_KEY, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, REDIS_HOST/PORT/USERNAME/PASSWORD/SSL, SHOPIFY_* keys, SUPABASE_* keys, OPENAI_API_KEY, WHATSAPP_* keys, SQL_ECHO)
+
+**Updated** Added comprehensive Dockerfile with Python 3.11-slim base image, Poetry 2.4.1 integration, system dependencies, and optimized build process.
 
 **Section sources**
-- [pyproject.toml:8-35](file://pyproject.toml#L8-L35)
-- [Makefile:1-2](file://Makefile#L1-L2)
-- [main.py:16-45](file://neurocom_backend/main.py#L16-L45)
-- [.env.example:1-21](file://.env.example#L1-L21)
+- [dockerfile:1-24](file://dockerfile#L1-L24)
+- [pyproject.toml:8-36](file://pyproject.toml#L8-L36)
+- [Makefile:1-3](file://Makefile#L1-L3)
+- [main.py:19-47](file://neurocom_backend/main.py#L19-L47)
+- [.env.example:1-23](file://.env.example#L1-L23)
 
 ### Kubernetes Deployment
 Deployment recommendations:
@@ -170,7 +197,7 @@ Health and readiness:
 - The /health endpoint returns a simple status; consider extending it to verify DB and Redis connectivity for readiness.
 
 **Section sources**
-- [main.py:43-45](file://neurocom_backend/main.py#L43-L45)
+- [main.py:45-47](file://neurocom_backend/main.py#L45-L47)
 - [connection.py:15-23](file://neurocom_backend/database/connection.py#L15-L23)
 
 ### Helm Chart Structure
@@ -244,7 +271,7 @@ Security:
   - Allow time for migrations to complete before probing
 
 **Section sources**
-- [main.py:43-45](file://neurocom_backend/main.py#L43-L45)
+- [main.py:45-47](file://neurocom_backend/main.py#L45-L47)
 - [connection.py:15-23](file://neurocom_backend/database/connection.py#L15-L23)
 
 ### Rollback Procedures
@@ -306,15 +333,15 @@ CFG --> ENV[".env.example keys"]
 ```
 
 **Diagram sources**
-- [main.py:16-45](file://neurocom_backend/main.py#L16-L45)
-- [settings.py:11-28](file://neurocom_backend/utils/settings.py#L11-L28)
+- [main.py:19-47](file://neurocom_backend/main.py#L19-L47)
+- [settings.py:11-37](file://neurocom_backend/utils/settings.py#L11-L37)
 - [connection.py:9-23](file://neurocom_backend/database/connection.py#L9-L23)
 - [redis_cache.py:56-71](file://neurocom_backend/utils/redis_cache.py#L56-L71)
-- [.env.example:1-21](file://.env.example#L1-L21)
+- [.env.example:1-23](file://.env.example#L1-L23)
 
 **Section sources**
-- [pyproject.toml:8-35](file://pyproject.toml#L8-L35)
-- [settings.py:11-28](file://neurocom_backend/utils/settings.py#L11-L28)
+- [pyproject.toml:8-36](file://pyproject.toml#L8-L36)
+- [settings.py:11-37](file://neurocom_backend/utils/settings.py#L11-L37)
 - [connection.py:9-23](file://neurocom_backend/database/connection.py#L9-L23)
 - [redis_cache.py:56-71](file://neurocom_backend/utils/redis_cache.py#L56-L71)
 
@@ -329,6 +356,9 @@ CFG --> ENV[".env.example keys"]
   - Set appropriate requests/limits in Kubernetes to avoid throttling.
 - External API rate limits:
   - Respect quotas and implement backoff/retry policies.
+- Docker optimization:
+  - Use slim base images and multi-stage builds to minimize image size.
+  - Leverage Poetry for efficient dependency management.
 
 [No sources needed since this section provides general guidance]
 
@@ -344,14 +374,20 @@ Common issues and resolutions:
   - Ensure migrations complete successfully before readiness probe passes.
 - CORS errors:
   - Review ALLOWED_ORIGINS in settings and adjust for frontend domains.
+- Docker build issues:
+  - Ensure Poetry version matches specified version (2.4.1).
+  - Verify system dependencies are installed correctly.
+- Port conflicts:
+  - Use PORT environment variable to configure different ports in containers.
 
 **Section sources**
 - [connection.py:9-23](file://neurocom_backend/database/connection.py#L9-L23)
-- [settings.py:11-28](file://neurocom_backend/utils/settings.py#L11-L28)
-- [main.py:43-45](file://neurocom_backend/main.py#L43-L45)
+- [settings.py:11-37](file://neurocom_backend/utils/settings.py#L11-L37)
+- [main.py:45-47](file://neurocom_backend/main.py#L45-L47)
+- [dockerfile:23-24](file://dockerfile#L23-L24)
 
 ## Conclusion
-The Tijarah AI Backend is a FastAPI application with clear operational touchpoints for containerization and deployment. By adopting multi-stage Docker builds, robust Kubernetes manifests/Helm charts, automated CI/CD pipelines, and comprehensive monitoring/logging, you can achieve scalable, reliable, and maintainable deployments. Health checks, autoscaling, and safe update strategies ensure high availability and zero-downtime releases.
+The Tijarah AI Backend is a FastAPI application with clear operational touchpoints for containerization and deployment. By adopting the comprehensive Dockerfile with Python 3.11-slim base image, optimized multi-stage builds, robust Kubernetes manifests/Helm charts, automated CI/CD pipelines, and comprehensive monitoring/logging, you can achieve scalable, reliable, and maintainable deployments. Health checks, autoscaling, and safe update strategies ensure high availability and zero-downtime releases.
 
 [No sources needed since this section summarizes without analyzing specific files]
 
@@ -374,9 +410,14 @@ The Tijarah AI Backend is a FastAPI application with clear operational touchpoin
 - AI/Integrations:
   - OPENAI_API_KEY
   - DARAZ_APP_KEY, DARAZ_APP_SECRET, DARAZ_API_URL, DARAZ_AUTH_URL, APP_CALLBACK_URL
+- WhatsApp Business:
+  - WHATSAPP_ACCESS_TOKEN, WHATSAPP_PN_ID, WHATSAPP_ACCOUNT_ID, WHATSAPP_VERIFY_TOKEN, WHATSAPP_API_VERSION, WHATSAPP_WEBHOOK_URL
+- Docker:
+  - PORT (default: 8000)
 
 **Section sources**
-- [.env.example:1-21](file://.env.example#L1-L21)
+- [.env.example:1-23](file://.env.example#L1-L23)
+- [dockerfile:3-6](file://dockerfile#L3-L6)
 
 ### Startup Flow Sequence
 ```mermaid
@@ -393,6 +434,22 @@ Note over App,Cache : Caching used by routers for performance
 ```
 
 **Diagram sources**
-- [main.py:16-45](file://neurocom_backend/main.py#L16-L45)
+- [main.py:19-47](file://neurocom_backend/main.py#L19-L47)
 - [connection.py:15-23](file://neurocom_backend/database/connection.py#L15-L23)
 - [redis_cache.py:56-71](file://neurocom_backend/utils/redis_cache.py#L56-L71)
+
+### Docker Build Commands
+```bash
+# Build the Docker image
+docker build -t tijarah-backend:latest .
+
+# Run the container
+docker run -p 8000:8000 --env-file .env tijarah-backend:latest
+
+# Run with custom port
+docker run -p 8000:8000 -e PORT=8000 --env-file .env tijarah-backend:latest
+```
+
+**Section sources**
+- [dockerfile:23-24](file://dockerfile#L23-L24)
+- [Makefile:1-3](file://Makefile#L1-L3)

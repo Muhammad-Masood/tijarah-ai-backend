@@ -15,6 +15,9 @@ RUN pip install --no-cache-dir poetry==2.4.1
 
 COPY pyproject.toml poetry.lock README.md ./
 
+RUN pip install --no-cache-dir "poetry==2.4.1" && \
+    poetry self add poetry-plugin-export
+    
 RUN poetry export -f requirements.txt --output requirements.txt --without-hashes
 
 RUN pip install --no-cache-dir -r requirements.txt

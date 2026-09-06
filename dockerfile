@@ -24,5 +24,5 @@ RUN pip uninstall -y charset-normalizer && \
 
 COPY neurocom_backend ./neurocom_backend
 
-CMD ["sh", "-c", "uvicorn neurocom_backend.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "poetry run uvicorn neurocom_backend.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
 

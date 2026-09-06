@@ -4,23 +4,22 @@
 **Referenced Files in This Document**
 - [dockerfile](file://dockerfile)
 - [pyproject.toml](file://pyproject.toml)
+- [poetry.lock](file://poetry.lock)
 - [Makefile](file://Makefile)
 - [README.md](file://README.md)
 - [main.py](file://neurocom_backend/main.py)
 - [settings.py](file://neurocom_backend/utils/settings.py)
 - [connection.py](file://neurocom_backend/database/connection.py)
 - [redis_cache.py](file://neurocom_backend/utils/redis_cache.py)
-- [.env.example](file://.env.example)
 </cite>
 
 ## Update Summary
 **Changes Made**
-- Updated Docker build section with comprehensive multi-stage build implementation
-- Added specific Dockerfile configuration details including Python 3.11-slim base image
-- Enhanced production deployment guidance with Poetry 2.4.1 integration
-- Updated environment variable configuration for containerized deployments
-- Added system dependencies and optimization techniques
-- Enhanced health check and monitoring sections for containerized environments
+- Updated Docker build section with enhanced security measures including Poetry installation with --no-root flag
+- Added charset-normalizer version pinning (3.4.1 to 3.5.1) for improved compatibility and security
+- Enhanced environment variable configuration for better deployment reliability
+- Updated dependency management with Poetry 2.4.1 integration and optimized build process
+- Improved container security posture with additional system dependencies and cleanup
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -126,8 +125,8 @@ API --> LOG
 
 ## Detailed Component Analysis
 
-### Docker Image Build (Optimized Multi-stage)
-The application uses a comprehensive Dockerfile with optimized build process:
+### Docker Image Build (Optimized Multi-stage with Enhanced Security)
+The application uses a comprehensive Dockerfile with enhanced security and optimized build process:
 
 **Base Image Configuration:**
 - Uses `python:3.11-slim` for minimal footprint
@@ -141,8 +140,13 @@ The application uses a comprehensive Dockerfile with optimized build process:
 - Installs required system packages: `libexpat1` and `gcc` for native extensions
 - Cleans apt cache to reduce image size
 
+**Enhanced Security Measures:**
+- **Poetry Installation with --no-root Flag**: Uses `poetry install --only main --no-interaction --no-ansi --no-root` to prevent installation of development dependencies and avoid creating root user context
+- **Charset-Normalizer Version Pinning**: Explicitly pins `charset-normalizer==3.4.1` (upgraded from 3.4.1 to 3.5.1 in poetry.lock) for improved compatibility and security
+- **Clean Dependency Management**: Forces complete reinstall of charset-normalizer to ensure consistent builds across environments
+
 **Build Process:**
-- Stage 1: Install Poetry 2.4.1 and project dependencies
+- Stage 1: Install Poetry 2.4.1 and project dependencies with security enhancements
 - Stage 2: Copy application code and run with Uvicorn
 
 **Production Deployment:**
@@ -152,7 +156,7 @@ The application uses a comprehensive Dockerfile with optimized build process:
 
 Key build inputs:
 - pyproject.toml for dependency declarations
-- poetry.lock for deterministic builds
+- poetry.lock for deterministic builds with pinned versions
 - Makefile command to start the server
 
 Runtime behavior:
@@ -163,14 +167,14 @@ Runtime behavior:
 Environment variables required at runtime:
 - See .env.example for all keys (e.g., DB_CONNECTION_STRING, SECRET_KEY, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, REDIS_HOST/PORT/USERNAME/PASSWORD/SSL, SHOPIFY_* keys, SUPABASE_* keys, OPENAI_API_KEY, WHATSAPP_* keys, SQL_ECHO)
 
-**Updated** Added comprehensive Dockerfile with Python 3.11-slim base image, Poetry 2.4.1 integration, system dependencies, and optimized build process.
+**Updated** Enhanced Dockerfile with improved security measures including Poetry installation with --no-root flag, charset-normalizer version pinning (3.4.1 to 3.5.1), and better environment variable configuration for deployment reliability.
 
 **Section sources**
-- [dockerfile:1-24](file://dockerfile#L1-L24)
+- [dockerfile:1-29](file://dockerfile#L1-L29)
 - [pyproject.toml:8-36](file://pyproject.toml#L8-L36)
+- [poetry.lock:492-671](file://poetry.lock#L492-L671)
 - [Makefile:1-3](file://Makefile#L1-L3)
 - [main.py:19-47](file://neurocom_backend/main.py#L19-L47)
-- [.env.example:1-23](file://.env.example#L1-L23)
 
 ### Kubernetes Deployment
 Deployment recommendations:
@@ -228,7 +232,7 @@ Pipeline stages:
 - Setup Python and Poetry
 - Install dependencies and resolve lock
 - Run unit tests
-- Build Docker image (multi-stage)
+- Build Docker image (multi-stage with security enhancements)
 - Push image to registry
 - Deploy to Kubernetes (kubectl apply or Helm upgrade)
 - Smoke tests against staging
@@ -237,13 +241,14 @@ Pipeline stages:
 Example workflow outline:
 - jobs:
   - test: install deps, run tests
-  - build: build image, push to registry
+  - build: build image with enhanced security, push to registry
   - deploy-staging: helm upgrade with staging values
   - deploy-prod: manual approval then helm upgrade with prod values
 
 Security:
 - Store registry credentials and Kubernetes kubeconfig as GitHub Secrets.
 - Scan images for vulnerabilities before pushing.
+- Leverage Poetry's --no-root flag for secure dependency installation.
 
 [No sources needed since this section provides general pipeline guidance]
 
@@ -323,6 +328,7 @@ Runtime dependencies and their roles:
 - SQLModel/SQLAlchemy: ORM and engine for PostgreSQL.
 - Redis client: Caching layer for performance-sensitive operations.
 - Environment configuration: Centralized via settings module and .env.
+- **Enhanced Security**: charset-normalizer 3.5.1 for improved compatibility and security.
 
 ```mermaid
 graph LR
@@ -330,6 +336,7 @@ APP["FastAPI App<br/>main.py"] --> CFG["Settings<br/>settings.py"]
 APP --> DB["PostgreSQL<br/>connection.py"]
 APP --> REDIS["Redis Cache<br/>redis_cache.py"]
 CFG --> ENV[".env.example keys"]
+APP --> SEC["Security Dependencies<br/>charset-normalizer 3.5.1"]
 ```
 
 **Diagram sources**
@@ -337,10 +344,11 @@ CFG --> ENV[".env.example keys"]
 - [settings.py:11-37](file://neurocom_backend/utils/settings.py#L11-L37)
 - [connection.py:9-23](file://neurocom_backend/database/connection.py#L9-L23)
 - [redis_cache.py:56-71](file://neurocom_backend/utils/redis_cache.py#L56-L71)
-- [.env.example:1-23](file://.env.example#L1-L23)
+- [poetry.lock:492-671](file://poetry.lock#L492-L671)
 
 **Section sources**
 - [pyproject.toml:8-36](file://pyproject.toml#L8-L36)
+- [poetry.lock:492-671](file://poetry.lock#L492-L671)
 - [settings.py:11-37](file://neurocom_backend/utils/settings.py#L11-L37)
 - [connection.py:9-23](file://neurocom_backend/database/connection.py#L9-L23)
 - [redis_cache.py:56-71](file://neurocom_backend/utils/redis_cache.py#L56-L71)
@@ -358,7 +366,10 @@ CFG --> ENV[".env.example keys"]
   - Respect quotas and implement backoff/retry policies.
 - Docker optimization:
   - Use slim base images and multi-stage builds to minimize image size.
-  - Leverage Poetry for efficient dependency management.
+  - Leverage Poetry for efficient dependency management with security enhancements.
+- **Security Optimization**: 
+  - Utilize Poetry's --no-root flag to prevent unnecessary package installations
+  - Pin critical dependencies like charset-normalizer for consistent performance
 
 [No sources needed since this section provides general guidance]
 
@@ -377,17 +388,21 @@ Common issues and resolutions:
 - Docker build issues:
   - Ensure Poetry version matches specified version (2.4.1).
   - Verify system dependencies are installed correctly.
+  - Check charset-normalizer version compatibility (3.5.1).
 - Port conflicts:
   - Use PORT environment variable to configure different ports in containers.
+- **Security-related Issues**:
+  - If experiencing permission issues, verify Poetry installation with --no-root flag
+  - Ensure charset-normalizer 3.5.1 is properly installed for compatibility
 
 **Section sources**
 - [connection.py:9-23](file://neurocom_backend/database/connection.py#L9-L23)
 - [settings.py:11-37](file://neurocom_backend/utils/settings.py#L11-L37)
 - [main.py:45-47](file://neurocom_backend/main.py#L45-L47)
-- [dockerfile:23-24](file://dockerfile#L23-L24)
+- [dockerfile:21-24](file://dockerfile#L21-L24)
 
 ## Conclusion
-The Tijarah AI Backend is a FastAPI application with clear operational touchpoints for containerization and deployment. By adopting the comprehensive Dockerfile with Python 3.11-slim base image, optimized multi-stage builds, robust Kubernetes manifests/Helm charts, automated CI/CD pipelines, and comprehensive monitoring/logging, you can achieve scalable, reliable, and maintainable deployments. Health checks, autoscaling, and safe update strategies ensure high availability and zero-downtime releases.
+The Tijarah AI Backend is a FastAPI application with clear operational touchpoints for containerization and deployment. By adopting the enhanced Dockerfile with Python 3.11-slim base image, optimized multi-stage builds with security improvements, robust Kubernetes manifests/Helm charts, automated CI/CD pipelines, and comprehensive monitoring/logging, you can achieve scalable, reliable, and maintainable deployments. The recent security enhancements including Poetry's --no-root flag and charset-normalizer version pinning provide better deployment reliability and security posture. Health checks, autoscaling, and safe update strategies ensure high availability and zero-downtime releases.
 
 [No sources needed since this section summarizes without analyzing specific files]
 
@@ -416,7 +431,7 @@ The Tijarah AI Backend is a FastAPI application with clear operational touchpoin
   - PORT (default: 8000)
 
 **Section sources**
-- [.env.example:1-23](file://.env.example#L1-L23)
+- [README.md:79-92](file://README.md#L79-L92)
 - [dockerfile:3-6](file://dockerfile#L3-L6)
 
 ### Startup Flow Sequence
@@ -451,5 +466,16 @@ docker run -p 8000:8000 -e PORT=8000 --env-file .env tijarah-backend:latest
 ```
 
 **Section sources**
-- [dockerfile:23-24](file://dockerfile#L23-L24)
+- [dockerfile:27-28](file://dockerfile#L27-L28)
 - [Makefile:1-3](file://Makefile#L1-L3)
+
+### Security Enhancements Summary
+- **Poetry Installation Security**: Using `--no-root` flag prevents installation of development dependencies and avoids creating root user context
+- **Dependency Pinning**: charset-normalizer pinned to version 3.5.1 for improved compatibility and security
+- **Clean Build Process**: Explicit uninstall and reinstall of charset-normalizer ensures consistent builds
+- **Minimal Base Image**: python:3.11-slim reduces attack surface
+- **System Dependencies**: Only essential packages installed (libexpat1, gcc) with proper cleanup
+
+**Section sources**
+- [dockerfile:15-24](file://dockerfile#L15-L24)
+- [poetry.lock:492-671](file://poetry.lock#L492-L671)

@@ -15,11 +15,11 @@
 
 ## Update Summary
 **Changes Made**
-- Updated Docker build section with enhanced security measures including Poetry installation with --no-root flag
-- Added charset-normalizer version pinning (3.4.1 to 3.5.1) for improved compatibility and security
-- Enhanced environment variable configuration for better deployment reliability
-- Updated dependency management with Poetry 2.4.1 integration and optimized build process
-- Improved container security posture with additional system dependencies and cleanup
+- Updated Docker build process with direct pip installation of Poetry 2.4.1 for enhanced reliability
+- Added poetry-plugin-export integration for automatic requirements.txt generation during build
+- Enhanced system dependencies handling with optimized package installation
+- Integrated uvicorn ASGI server with proper PORT environment variable configuration
+- Improved container security posture with streamlined dependency management
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -120,7 +120,7 @@ API --> LOG
 **Diagram sources**
 - [main.py:19-47](file://neurocom_backend/main.py#L19-L47)
 - [connection.py:9-23](file://neurocom_backend/database/connection.py#L9-L23)
-- [redis_cache.py:56-71](file://neurocom_backend/utils/redis_cache.py#L56-L71)
+- [redis_cache.py:56-71](file://neurocom_backend/utils/redis_cache.py#L56-71)
 - [settings.py:11-37](file://neurocom_backend/utils/settings.py#L11-L37)
 
 ## Detailed Component Analysis
@@ -133,21 +133,16 @@ The application uses a comprehensive Dockerfile with enhanced security and optim
 - Sets environment variables for optimal Python behavior:
   - `PYTHONDONTWRITEBYTECODE=1` prevents .pyc file generation
   - `PYTHONUNBUFFERED=1` ensures immediate log output
-  - `POETRY_VERSION=2.4.1` specifies exact Poetry version
-  - `POETRY_VIRTUALENVS_CREATE=false` disables virtual environment creation
 
 **System Dependencies:**
 - Installs required system packages: `libexpat1` and `gcc` for native extensions
 - Cleans apt cache to reduce image size
 
-**Enhanced Security Measures:**
-- **Poetry Installation with --no-root Flag**: Uses `poetry install --only main --no-interaction --no-ansi --no-root` to prevent installation of development dependencies and avoid creating root user context
-- **Charset-Normalizer Version Pinning**: Explicitly pins `charset-normalizer==3.4.1` (upgraded from 3.4.1 to 3.5.1 in poetry.lock) for improved compatibility and security
-- **Clean Dependency Management**: Forces complete reinstall of charset-normalizer to ensure consistent builds across environments
-
-**Build Process:**
-- Stage 1: Install Poetry 2.4.1 and project dependencies with security enhancements
-- Stage 2: Copy application code and run with Uvicorn
+**Enhanced Build Process:**
+- **Direct Poetry Installation**: Uses `pip install --no-cache-dir poetry==2.4.1` for reliable Poetry installation
+- **Poetry Plugin Integration**: Adds `poetry-plugin-export` for automatic requirements.txt generation
+- **Automatic Requirements Generation**: Runs `poetry export -f requirements.txt --output requirements.txt --without-hashes` to generate optimized requirements
+- **Streamlined Dependency Installation**: Uses generated requirements.txt for faster, more reliable pip installs
 
 **Production Deployment:**
 - Runs Uvicorn with configurable port via `${PORT:-8000}` environment variable
@@ -167,12 +162,11 @@ Runtime behavior:
 Environment variables required at runtime:
 - See .env.example for all keys (e.g., DB_CONNECTION_STRING, SECRET_KEY, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, REDIS_HOST/PORT/USERNAME/PASSWORD/SSL, SHOPIFY_* keys, SUPABASE_* keys, OPENAI_API_KEY, WHATSAPP_* keys, SQL_ECHO)
 
-**Updated** Enhanced Dockerfile with improved security measures including Poetry installation with --no-root flag, charset-normalizer version pinning (3.4.1 to 3.5.1), and better environment variable configuration for deployment reliability.
+**Updated** Enhanced Dockerfile with direct Poetry 2.4.1 installation via pip, poetry-plugin-export integration for automatic requirements generation, and improved system dependencies handling for better build reliability.
 
 **Section sources**
-- [dockerfile:1-29](file://dockerfile#L1-L29)
+- [dockerfile:1-28](file://dockerfile#L1-L28)
 - [pyproject.toml:8-36](file://pyproject.toml#L8-L36)
-- [poetry.lock:492-671](file://poetry.lock#L492-L671)
 - [Makefile:1-3](file://Makefile#L1-L3)
 - [main.py:19-47](file://neurocom_backend/main.py#L19-L47)
 
@@ -232,7 +226,7 @@ Pipeline stages:
 - Setup Python and Poetry
 - Install dependencies and resolve lock
 - Run unit tests
-- Build Docker image (multi-stage with security enhancements)
+- Build Docker image (multi-stage with enhanced build process)
 - Push image to registry
 - Deploy to Kubernetes (kubectl apply or Helm upgrade)
 - Smoke tests against staging
@@ -241,14 +235,14 @@ Pipeline stages:
 Example workflow outline:
 - jobs:
   - test: install deps, run tests
-  - build: build image with enhanced security, push to registry
+  - build: build image with enhanced build process, push to registry
   - deploy-staging: helm upgrade with staging values
   - deploy-prod: manual approval then helm upgrade with prod values
 
 Security:
 - Store registry credentials and Kubernetes kubeconfig as GitHub Secrets.
 - Scan images for vulnerabilities before pushing.
-- Leverage Poetry's --no-root flag for secure dependency installation.
+- Leverage Poetry's enhanced build process for secure dependency installation.
 
 [No sources needed since this section provides general pipeline guidance]
 
@@ -328,7 +322,6 @@ Runtime dependencies and their roles:
 - SQLModel/SQLAlchemy: ORM and engine for PostgreSQL.
 - Redis client: Caching layer for performance-sensitive operations.
 - Environment configuration: Centralized via settings module and .env.
-- **Enhanced Security**: charset-normalizer 3.5.1 for improved compatibility and security.
 
 ```mermaid
 graph LR
@@ -336,7 +329,6 @@ APP["FastAPI App<br/>main.py"] --> CFG["Settings<br/>settings.py"]
 APP --> DB["PostgreSQL<br/>connection.py"]
 APP --> REDIS["Redis Cache<br/>redis_cache.py"]
 CFG --> ENV[".env.example keys"]
-APP --> SEC["Security Dependencies<br/>charset-normalizer 3.5.1"]
 ```
 
 **Diagram sources**
@@ -344,11 +336,9 @@ APP --> SEC["Security Dependencies<br/>charset-normalizer 3.5.1"]
 - [settings.py:11-37](file://neurocom_backend/utils/settings.py#L11-L37)
 - [connection.py:9-23](file://neurocom_backend/database/connection.py#L9-L23)
 - [redis_cache.py:56-71](file://neurocom_backend/utils/redis_cache.py#L56-L71)
-- [poetry.lock:492-671](file://poetry.lock#L492-L671)
 
 **Section sources**
 - [pyproject.toml:8-36](file://pyproject.toml#L8-L36)
-- [poetry.lock:492-671](file://poetry.lock#L492-L671)
 - [settings.py:11-37](file://neurocom_backend/utils/settings.py#L11-L37)
 - [connection.py:9-23](file://neurocom_backend/database/connection.py#L9-L23)
 - [redis_cache.py:56-71](file://neurocom_backend/utils/redis_cache.py#L56-L71)
@@ -366,10 +356,10 @@ APP --> SEC["Security Dependencies<br/>charset-normalizer 3.5.1"]
   - Respect quotas and implement backoff/retry policies.
 - Docker optimization:
   - Use slim base images and multi-stage builds to minimize image size.
-  - Leverage Poetry for efficient dependency management with security enhancements.
-- **Security Optimization**: 
-  - Utilize Poetry's --no-root flag to prevent unnecessary package installations
-  - Pin critical dependencies like charset-normalizer for consistent performance
+  - Leverage Poetry's enhanced build process with automatic requirements generation for efficient dependency management.
+- **Build Optimization**: 
+  - Utilize poetry-plugin-export for automatic requirements.txt generation
+  - Direct Poetry installation via pip ensures consistent builds across environments
 
 [No sources needed since this section provides general guidance]
 
@@ -388,21 +378,22 @@ Common issues and resolutions:
 - Docker build issues:
   - Ensure Poetry version matches specified version (2.4.1).
   - Verify system dependencies are installed correctly.
-  - Check charset-normalizer version compatibility (3.5.1).
+  - Check poetry-plugin-export functionality for requirements generation.
 - Port conflicts:
   - Use PORT environment variable to configure different ports in containers.
-- **Security-related Issues**:
-  - If experiencing permission issues, verify Poetry installation with --no-root flag
-  - Ensure charset-normalizer 3.5.1 is properly installed for compatibility
+- **Build-related Issues**:
+  - If experiencing Poetry installation issues, verify pip installation method
+  - Ensure poetry-plugin-export is properly installed for requirements generation
+  - Check that generated requirements.txt contains all necessary dependencies
 
 **Section sources**
 - [connection.py:9-23](file://neurocom_backend/database/connection.py#L9-L23)
 - [settings.py:11-37](file://neurocom_backend/utils/settings.py#L11-L37)
 - [main.py:45-47](file://neurocom_backend/main.py#L45-L47)
-- [dockerfile:21-24](file://dockerfile#L21-L24)
+- [dockerfile:14-23](file://dockerfile#L14-L23)
 
 ## Conclusion
-The Tijarah AI Backend is a FastAPI application with clear operational touchpoints for containerization and deployment. By adopting the enhanced Dockerfile with Python 3.11-slim base image, optimized multi-stage builds with security improvements, robust Kubernetes manifests/Helm charts, automated CI/CD pipelines, and comprehensive monitoring/logging, you can achieve scalable, reliable, and maintainable deployments. The recent security enhancements including Poetry's --no-root flag and charset-normalizer version pinning provide better deployment reliability and security posture. Health checks, autoscaling, and safe update strategies ensure high availability and zero-downtime releases.
+The Tijarah AI Backend is a FastAPI application with clear operational touchpoints for containerization and deployment. By adopting the enhanced Dockerfile with Python 3.11-slim base image, optimized multi-stage builds with direct Poetry 2.4.1 installation and poetry-plugin-export integration, robust Kubernetes manifests/Helm charts, automated CI/CD pipelines, and comprehensive monitoring/logging, you can achieve scalable, reliable, and maintainable deployments. The recent build process improvements including automatic requirements generation and streamlined dependency management provide better build reliability and deployment consistency. Health checks, autoscaling, and safe update strategies ensure high availability and zero-downtime releases.
 
 [No sources needed since this section summarizes without analyzing specific files]
 
@@ -432,7 +423,7 @@ The Tijarah AI Backend is a FastAPI application with clear operational touchpoin
 
 **Section sources**
 - [README.md:79-92](file://README.md#L79-L92)
-- [dockerfile:3-6](file://dockerfile#L3-L6)
+- [dockerfile:3-4](file://dockerfile#L3-L4)
 
 ### Startup Flow Sequence
 ```mermaid
@@ -469,13 +460,12 @@ docker run -p 8000:8000 -e PORT=8000 --env-file .env tijarah-backend:latest
 - [dockerfile:27-28](file://dockerfile#L27-L28)
 - [Makefile:1-3](file://Makefile#L1-L3)
 
-### Security Enhancements Summary
-- **Poetry Installation Security**: Using `--no-root` flag prevents installation of development dependencies and avoids creating root user context
-- **Dependency Pinning**: charset-normalizer pinned to version 3.5.1 for improved compatibility and security
-- **Clean Build Process**: Explicit uninstall and reinstall of charset-normalizer ensures consistent builds
-- **Minimal Base Image**: python:3.11-slim reduces attack surface
-- **System Dependencies**: Only essential packages installed (libexpat1, gcc) with proper cleanup
+### Enhanced Build Process Summary
+- **Direct Poetry Installation**: Uses `pip install --no-cache-dir poetry==2.4.1` for reliable installation
+- **Poetry Plugin Integration**: Adds `poetry-plugin-export` for automatic requirements generation
+- **Automatic Requirements Generation**: Generates optimized requirements.txt during build process
+- **Streamlined Dependencies**: Uses generated requirements.txt for faster pip installations
+- **Optimized System Dependencies**: Installs only essential packages (gcc, libexpat1) with proper cleanup
 
 **Section sources**
-- [dockerfile:15-24](file://dockerfile#L15-L24)
-- [poetry.lock:492-671](file://poetry.lock#L492-L671)
+- [dockerfile:14-23](file://dockerfile#L14-L23)

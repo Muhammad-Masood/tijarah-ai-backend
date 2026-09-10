@@ -15,7 +15,19 @@
 - [Makefile](file://Makefile)
 - [README.md](file://README.md)
 - [pyproject.toml](file://pyproject.toml)
+- [requirements.txt](file://requirements.txt)
+- [dockerfile](file://dockerfile)
+- [.env.example](file://.env.example)
 </cite>
+
+## Update Summary
+**Changes Made**
+- Added comprehensive requirements.txt with 157 pinned Python packages for production deployment
+- Documented the dual dependency management approach (Poetry for development, pip for production)
+- Updated installation instructions to support both Poetry and pip workflows
+- Added Docker-based production deployment guidance
+- Enhanced security considerations for production environments
+- Updated troubleshooting section with pip-specific issues
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -23,7 +35,7 @@
 3. [Core Components](#core-components)
 4. [Architecture Overview](#architecture-overview)
 5. [Detailed Component Analysis](#detailed-component-analysis)
-6. [Dependency Analysis](#dependency-analysis)
+6. [Dependency Management](#dependency-management)
 7. [Performance Considerations](#performance-considerations)
 8. [Troubleshooting Guide](#troubleshooting-guide)
 9. [Conclusion](#conclusion)
@@ -34,6 +46,8 @@ This document provides comprehensive environment setup and configuration guidanc
 
 The application uses environment variables via python-dotenv to load configuration from a .env file. There is no centralized Pydantic Settings model; instead, configuration values are read directly using os.getenv with defaults where applicable.
 
+**Updated** The project now supports both Poetry-based development and pip-based production deployment through a comprehensive requirements.txt file with 157 pinned packages.
+
 ## Project Structure
 Configuration is primarily defined and consumed across these areas:
 - Centralized environment loading and shared constants: utils/settings.py
@@ -42,6 +56,8 @@ Configuration is primarily defined and consumed across these areas:
 - Security utilities (JWT, password hashing, encryption): utils/security.py
 - External integrations: services/* (Shopify, Daraz, Supabase Storage, Chat/LM providers)
 - Entry points and tooling: main.py, Makefile, README.md, pyproject.toml
+- Production dependencies: requirements.txt (157 pinned packages)
+- Containerization: dockerfile
 
 ```mermaid
 graph TB
@@ -54,6 +70,8 @@ F --> G["Shopify Service<br/>services/shopify_service.py"]
 F --> H["Daraz Service<br/>services/daraz_service.py"]
 F --> I["Storage Service<br/>services/storage_service.py"]
 F --> J["Chat/LM Clients<br/>services/chat_service.py, mcp_server/client.py"]
+K["Production Dependencies<br/>requirements.txt"] --> A
+L["Docker Build<br/>dockerfile"] --> K
 ```
 
 **Diagram sources**
@@ -67,6 +85,8 @@ F --> J["Chat/LM Clients<br/>services/chat_service.py, mcp_server/client.py"]
 - [storage_service.py](file://neurocom_backend/services/storage_service.py)
 - [chat_service.py](file://neurocom_backend/services/chat_service.py)
 - [client.py](file://neurocom_backend/mcp_server/client.py)
+- [requirements.txt](file://requirements.txt)
+- [dockerfile](file://dockerfile)
 
 **Section sources**
 - [README.md:1-6](file://README.md#L1-L6)
@@ -100,7 +120,7 @@ This section summarizes the key configuration components and their responsibilit
   - Chat/LM providers: require provider-specific API keys (e.g., OpenRouter, Groq).
 
 **Section sources**
-- [settings.py:1-29](file://neurocom_backend/utils/settings.py#L1-L29)
+- [settings.py:1-37](file://neurocom_backend/utils/settings.py#L1-L37)
 - [connection.py:1-28](file://neurocom_backend/database/connection.py#L1-L28)
 - [redis_cache.py:1-204](file://neurocom_backend/utils/redis_cache.py#L1-L204)
 - [security.py:1-44](file://neurocom_backend/utils/security.py#L1-L44)
@@ -134,7 +154,7 @@ Note over App,EXT : All configuration sourced from environment variables
 ```
 
 **Diagram sources**
-- [settings.py:1-29](file://neurocom_backend/utils/settings.py#L1-L29)
+- [settings.py:1-37](file://neurocom_backend/utils/settings.py#L1-L37)
 - [connection.py:1-28](file://neurocom_backend/database/connection.py#L1-L28)
 - [redis_cache.py:1-204](file://neurocom_backend/utils/redis_cache.py#L1-L204)
 - [security.py:1-44](file://neurocom_backend/utils/security.py#L1-L44)
@@ -185,16 +205,25 @@ Below is a consolidated list of environment variables used by the application, g
   - SUPABASE_PRODUCT_BUCKET: Bucket name for product images (default product-images).
 
 - AI / LLM providers
+  - OPENAI_API_KEY: API key for OpenAI services.
   - OPEN_ROUTER_AI_API_KEY: API key for OpenRouter-based chat services.
   - GROQ_API_KEY: API key for Groq-based LLM calls (used in MCP client).
   - GEMINI_API_KEY: Optional key for Google Generative AI (commented usage in MCP client).
+
+- WhatsApp Business Cloud API
+  - WHATSAPP_ACCESS_TOKEN: WhatsApp Business API access token.
+  - WHATSAPP_PN_ID: Phone number ID for WhatsApp Business.
+  - WHATSAPP_ACCOUNT_ID: WhatsApp Business account ID.
+  - WHATSAPP_API_VERSION: API version (default v25.0).
+  - WHATSAPP_VERIFY_TOKEN: Webhook verification token.
+  - WHATSAPP_WEBHOOK_URL: Webhook endpoint URL.
 
 Notes:
 - Many modules call load_dotenv() to ensure .env is loaded before reading environment variables.
 - Some variables have sensible defaults; others are strictly required and will raise errors if missing.
 
 **Section sources**
-- [settings.py:11-29](file://neurocom_backend/utils/settings.py#L11-L29)
+- [settings.py:11-37](file://neurocom_backend/utils/settings.py#L11-L37)
 - [connection.py:9-13](file://neurocom_backend/database/connection.py#L9-L13)
 - [redis_cache.py:56-71](file://neurocom_backend/utils/redis_cache.py#L56-L71)
 - [security.py:13-28](file://neurocom_backend/utils/security.py#L13-L28)
@@ -203,6 +232,7 @@ Notes:
 - [storage_service.py:32-35](file://neurocom_backend/services/storage_service.py#L32-L35)
 - [chat_service.py:7-10](file://neurocom_backend/services/chat_service.py#L7-L10)
 - [client.py:22-32](file://neurocom_backend/mcp_server/client.py#L22-L32)
+- [.env.example:1-23](file://.env.example#L1-L23)
 
 ### Database Connection Settings
 - The database engine is created with a connection string from DB_CONNECTION_STRING.
@@ -324,7 +354,7 @@ ExtInit --> Ready
 ```
 
 **Diagram sources**
-- [settings.py:1-29](file://neurocom_backend/utils/settings.py#L1-L29)
+- [settings.py:1-37](file://neurocom_backend/utils/settings.py#L1-L37)
 - [connection.py:1-28](file://neurocom_backend/database/connection.py#L1-L28)
 - [redis_cache.py:1-204](file://neurocom_backend/utils/redis_cache.py#L1-L204)
 - [security.py:1-44](file://neurocom_backend/utils/security.py#L1-L44)
@@ -343,6 +373,14 @@ Key dependencies and their roles:
 - requests: HTTP client for external APIs.
 - openai/google-genai: LLM provider clients.
 
+**Updated** The project now includes a comprehensive requirements.txt file with 157 pinned packages for production deployment, including:
+- AI/ML libraries: LangChain ecosystem (langchain, langchain-core, langchain-openai), OpenAI integration, ChromaDB vector database
+- Database connectors: psycopg2-binary, SQLAlchemy, SQLModel
+- Caching systems: Redis with hiredis support
+- Security updates: charset-normalizer 3.5.1, cryptography 44.0.3
+- Performance optimizations: uvloop, orjson, msgpack
+- Development tools: watchfiles, rich, plotly
+
 ```mermaid
 graph LR
 A["Environment Variables"] --> B["python-dotenv"]
@@ -352,25 +390,30 @@ C --> E["Redis Client"]
 C --> F["Security (JWT, Encryption)"]
 C --> G["HTTP Clients (requests)"]
 C --> H["LLM Clients (openai, google-genai)"]
+I["Production Requirements<br/>requirements.txt"] --> J["Pip Installation"]
+J --> K["Container Image<br/>dockerfile"]
 ```
 
 **Diagram sources**
 - [pyproject.toml:8-35](file://pyproject.toml#L8-L35)
-- [settings.py:1-29](file://neurocom_backend/utils/settings.py#L1-L29)
+- [requirements.txt:1-158](file://requirements.txt#L1-L158)
+- [dockerfile:1-28](file://dockerfile#L1-L28)
+- [settings.py:1-37](file://neurocom_backend/utils/settings.py#L1-L37)
 - [connection.py:1-28](file://neurocom_backend/database/connection.py#L1-L28)
 - [redis_cache.py:1-204](file://neurocom_backend/utils/redis_cache.py#L1-L204)
 - [security.py:1-44](file://neurocom_backend/utils/security.py#L1-L44)
 
 **Section sources**
 - [pyproject.toml:8-35](file://pyproject.toml#L8-L35)
+- [requirements.txt:1-158](file://requirements.txt#L1-L158)
 
 ## Performance Considerations
 - Redis caching reduces upstream API calls and CPU-intensive transforms; tune TTLs based on data volatility.
 - Background refresh avoids blocking requests while revalidating cache.
 - Connection pooling and retries for HTTP clients improve resilience.
 - SQL echo should be disabled in production to reduce log noise.
-
-[No sources needed since this section provides general guidance]
+- **Updated** Production deployments benefit from pinned dependencies ensuring consistent performance across environments.
+- **Updated** The requirements.txt includes performance-optimized packages like uvloop, orjson, and msgpack for faster JSON processing and event loops.
 
 ## Troubleshooting Guide
 Common configuration issues and resolutions:
@@ -397,7 +440,19 @@ Common configuration issues and resolutions:
 
 - LLM provider errors
   - Symptom: Authentication or model errors.
-  - Action: Provide correct API keys (OPEN_ROUTER_AI_API_KEY, GROQ_API_KEY); verify base_url and model names.
+  - Action: Provide correct API keys (OPENAI_API_KEY, OPEN_ROUTER_AI_API_KEY, GROQ_API_KEY); verify base_url and model names.
+
+- **Updated** Dependency installation issues
+  - Symptom: ImportError or ModuleNotFoundError during startup.
+  - Action: Ensure all packages from requirements.txt are installed; verify Python version compatibility (3.11+); check for conflicting package versions.
+
+- **Updated** Docker build failures
+  - Symptom: Build fails during pip install or poetry export.
+  - Action: Verify system dependencies (gcc, libexpat1); ensure internet access for package downloads; check Docker build context.
+
+- **Updated** Poetry vs pip conflicts
+  - Symptom: Package version mismatches between Poetry and pip installations.
+  - Action: Use Poetry for development only; use requirements.txt for production; clean virtual environments when switching between dependency managers.
 
 **Section sources**
 - [connection.py:9-13](file://neurocom_backend/database/connection.py#L9-L13)
@@ -408,30 +463,59 @@ Common configuration issues and resolutions:
 - [storage_service.py:46-74](file://neurocom_backend/services/storage_service.py#L46-L74)
 - [chat_service.py:7-10](file://neurocom_backend/services/chat_service.py#L7-L10)
 - [client.py:22-32](file://neurocom_backend/mcp_server/client.py#L22-L32)
+- [requirements.txt:1-158](file://requirements.txt#L1-L158)
+- [dockerfile:14-23](file://dockerfile#L14-L23)
 
 ## Conclusion
-The Tijarah AI Backend relies on environment variables for all configuration, loaded via python-dotenv. Centralized settings expose shared constants, while individual modules initialize their respective clients (database, Redis, security, external services). Follow the recommended secret management practices, validate configurations per environment, and use the troubleshooting guide to resolve common issues quickly.
-
-[No sources needed since this section summarizes without analyzing specific files]
+The Tijarah AI Backend relies on environment variables for all configuration, loaded via python-dotenv. Centralized settings expose shared constants, while individual modules initialize their respective clients (database, Redis, security, external services). The project now supports both Poetry-based development and pip-based production deployment through a comprehensive requirements.txt file with 157 pinned packages, ensuring consistency and reliability across different environments. Follow the recommended secret management practices, validate configurations per environment, and use the troubleshooting guide to resolve common issues quickly.
 
 ## Appendices
 
 ### Step-by-Step Setup Instructions
 
-- Development
-  - Install dependencies using Poetry.
-  - Create a .env file with required variables (see Environment Variables Reference).
-  - Run the server using the provided Makefile command or Poetry run uvicorn.
+#### Development Environment (Poetry)
+- Install dependencies using Poetry for development flexibility.
+- Create a .env file with required variables (see Environment Variables Reference).
+- Run the server using the provided Makefile command or Poetry run uvicorn.
+- Benefits: Automatic dependency resolution, virtual environment isolation, development-time extras.
 
-- Staging
-  - Inject environment variables via your staging platform (secrets manager, container env).
-  - Ensure Redis SSL and credentials are configured for managed Redis.
-  - Disable SQL echo and enable appropriate logging levels.
+#### Production Environment (pip)
+- Install dependencies using requirements.txt for deterministic builds.
+- Use Docker containerization for consistent deployment.
+- Inject environment variables via platform secrets management.
+- Benefits: Pinned versions, optimized packages, reproducible builds.
 
-- Production
-  - Use strong, rotated secrets (SECRET_KEY, provider API keys).
-  - Configure Redis with SSL and proper authentication.
-  - Validate database connectivity and perform migrations before serving traffic.
-  - Monitor cache hit rates and adjust TTLs; review external API rate limits.
+#### Docker Deployment
+- Build the container image using the provided Dockerfile.
+- The Dockerfile automatically exports Poetry dependencies to requirements.txt and installs them with pip.
+- Run the container with environment variables mounted or passed via command line.
+- Benefits: Consistent runtime environment, easy scaling, isolated dependencies.
+
+#### Environment-Specific Configuration
+- Development: Use local databases, debug logging, and relaxed security settings.
+- Staging: Mirror production configuration with test data and staging API keys.
+- Production: Use strong, rotated secrets, SSL-enabled Redis, and production-grade databases.
+
+[No sources needed since this section provides general guidance]
+
+### Production Deployment Checklist
+- [ ] All required environment variables configured
+- [ ] Database connection string validated
+- [ ] Redis server accessible with proper authentication
+- [ ] API keys for external services (Shopify, Daraz, OpenAI, etc.) set
+- [ ] SSL certificates configured for HTTPS
+- [ ] Logging and monitoring enabled
+- [ ] Backup strategy implemented for database and storage
+- [ ] Health check endpoints tested
+- [ ] Performance benchmarks completed
+- [ ] Security scan performed on dependencies
+
+### Dependency Management Strategy
+The project uses a dual approach:
+- **Development**: Poetry for flexible dependency management and virtual environment isolation
+- **Production**: requirements.txt with 157 pinned packages for deterministic builds
+- **Containerization**: Dockerfile automates the transition from Poetry to pip for production builds
+
+This ensures development flexibility while maintaining production stability and reproducibility.
 
 [No sources needed since this section provides general guidance]

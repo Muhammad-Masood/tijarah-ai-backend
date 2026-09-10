@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 # resolved from .env regardless of import order.
 load_dotenv()
 
-ALLOWED_ORIGINS = ['http://localhost:3000', 'http://localhost:3001']
+ALLOWED_ORIGINS = ['http://localhost:3000', 'http://localhost:3001', 'https://tijarah-ai-web.vercel.app']
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
